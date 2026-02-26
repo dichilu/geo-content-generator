@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEO 工控標題描述生成器 v1.8.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ipc-global-production-v1';
+        const apiKey = ""; 
+
+        let isAuthReady = false;
+        let isDataInitialLoaded = false;
+        let currentLang = 'zh';
+        let lastResultsData = [];
+
+        const i18n = {
+            zh: {
+                navTitle: "GEO 工控標題描述生成器",
+                navVer: "v1.8.0 跨語系輸出版",
+                authSuccess: "雲端數據同步中",
+                sec1Title: "本次優化產品 (建議一次不要超過十個)",
+                pageLevel: "頁面層級:",
+                levelPDP: "產品詳情頁 (PDP)",
+                levelPLP: "產品線頁面 (PLP)",
+                levelHome: "企業官方首頁 (Home)",
+                urlPlaceholder: "在此貼入網址 (支援換行或逗點「,」分割)...",
+                pdfTitle: "拖放技術規格 (僅限 PDF/Text)",
+                fileSelected: "已選取檔案:",
+                sec2Title: "團隊共享累積大腦",
+                syncStatus: "自動即時同步",
+                btnReload: "刷新雲端",
+                btnReset: "重置數據",
+                geoLabel: "GEO 強化引擎",
+                titleStrategyLabel: "標題顯示策略",
+                strategyAuto: "智慧自動 (專家模式)",
+                strategyKeyword: "關鍵字領先 (攻勢模式)",
+                strategyBrand: "品牌與型號領先 (守勢模式)",
+                btnSubmit: "生成GEO優化內容",
+                resTitle: "Optimization Result",
+                btnExport: "下載 Excel 報告",
+                procTitle: "Deep Analyzing DNA...",
+                procSub: "正在切換目標語系並校準文案，請稍候",
+                copyAll: "複製全區塊",
+                copySingle: "單獨複製",
+                tagLabel: "建議標籤:",
+                catLabel: "建議分類:",
+                copyMeta: "複製設定值",
+                confirmReset: "確定要重置數據庫嗎？"
+            },
+            en: {
+                navTitle: "GEO IPC Optimizer",
+                navVer: "v1.8.0 Multi-Lang Edition",
+                authSuccess: "Cloud Synced",
+                sec1Title: "Target Products (Max 10 recommended)",
+                pageLevel: "Level:",
+                levelPDP: "Product (PDP)",
+                levelPLP: "Category (PLP)",
+                levelHome: "Home",
+                urlPlaceholder: "Paste URLs here (Newline/Comma)...",
+                pdfTitle: "Drop Specs (PDF Only)",
+                fileSelected: "Selected:",
+                sec2Title: "Knowledge Base",
+                syncStatus: "Sync Active",
+                btnReload: "Refresh",
+                btnReset: "Reset",
+                geoLabel: "GEO Engine",
+                titleStrategyLabel: "Title Strategy",
+                strategyAuto: "Smart Auto (Expert)",
+                strategyKeyword: "Keyword First (Offensive)",
+                strategyBrand: "Brand First (Defensive)",
+                btnSubmit: "Generate GEO Content",
+                resTitle: "Optimization Result",
+                btnExport: "Download Excel",
+                procTitle: "Deep Analyzing DNA...",
+                procSub: "Switching output language & calibrating, please wait",
+                copyAll: "Copy All",
+                copySingle: "Copy",
+                tagLabel: "Tags:",
+                catLabel: "Category:",
+                copyMeta: "Copy Metadata",
+                confirmReset: "Are you sure you want to reset the database?"
+            }
+        };
+
+        const updateUILanguage = () => {
+            const t = i18n[currentLang];
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (el.tagName === 'TEXTAREA') el.placeholder = t[key];
+                else el.innerText = t[key];
+            });
+            document.getElementById('current-level').options[0].text = t.levelPDP;
+            document.getElementById('current-level').options[1].text = t.levelPLP;
+            document.getElementById('current-level').options[2].text = t.levelHome;
+            document.getElementById('title-strategy').options[0].text = t.strategyAuto;
+            document.getElementById('title-strategy').options[1].text = t.strategyKeyword;
+            document.getElementById('title-strategy').options[2].text = t.strategyBrand;
+            document.getElementById('submit-btn-text').innerText = t.btnSubmit;
+            if(document.getElementById('export-btn-text')) document.getElementById('export-btn-text').innerText = t.btnExport;
+            updateFileDisplay();
+        };
+
+        window.toggleLanguage = () => {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUILanguage();
+        };
+
+        const updateFileDisplay = () => {
+            const fileInput = document.getElementById('file-input');
+            const display = document.getElementById('file-status-display');
+            if (fileInput.files.length > 0) {
+                const names = Array.from(fileInput.files).map(f => f.name).join(', ');
+                display.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-2"></i> ${i18n[currentLang].fileSelected} <span class="text-slate-600 font-bold ml-1">${names}</span>`;
+                display.classList.remove('hidden');
+            } else {
+                display.classList.add('hidden');
+            }
+        };
+
+        const initializeCloud = async () => {
+            const statusEl = document.getElementById('auth-status');
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        isAuthReady = true;
+                        statusEl.innerHTML = `<i class="fas fa-check-circle text-green-500"></i> ${i18n[currentLang].authSuccess}`;
+                        await loadSharedKnowledge(true);
+                    }
+                });
+            } catch (e) { statusEl.innerHTML = 'Auth Error'; }
+        };
+
+        async function loadSharedKnowledge(isSilent = false) {
+            if (!isAuthReady) return;
+            const loaderIcon = document.getElementById('reload-icon');
+            if(!isSilent && loaderIcon) loaderIcon.classList.add('fa-spin');
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('kb-urls').value = data.kbUrls || "";
+                    document.getElementById('kb-manual').value = data.kbManual || "";
+                    updateDashboard(data.kbUrls || "", data.kbManual || "");
+                }
+                isDataInitialLoaded = true;
+            } catch (e) { console.error(e); }
+            finally { if(!isSilent && loaderIcon) loaderIcon.classList.remove('fa-spin'); }
+        }
+
+        function updateDashboard(urls, manual) {
+            document.getElementById('url-count').innerText = urls.split('\n').filter(u => u.trim() !== "").length;
+            document.getElementById('char-count').innerText = manual.length;
+        }
+
+        function detox(text) {
+            if(!text) return "";
+            return text.replace(/\(\d+\s*characters?\)/gi, "").replace(/\(\d+\s*字\)/gi, "").replace(/Geo|SEO|SGE/gi, "").replace(/\*\*/g, "").replace(/\*/g, "").trim();
+        }
+
+        function renderVisual(text) {
+            if(!text) return "";
+            let clean = text.replace(/\(\d+\s*characters?\)/gi, "").replace(/\(\d+\s*字\)/gi, "").replace(/Geo|SEO|SGE/gi, "");
+            return clean.replace(/\*\*(.*?)\*\*/g, '<b class="text-[#005bac] font-black">$1</b>');
+        }
+
+        async function autoBrainSync() {
+            if (!isDataInitialLoaded || !isAuthReady) return;
+            const syncIdc = document.getElementById('sync-indicator');
+            syncIdc.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
+            const inputUrls = document.getElementById('kb-urls').value;
+            const inputManual = document.getElementById('kb-manual').value;
+            try {
+                await setDoc(docRef, { kbUrls: inputUrls, kbManual: inputManual, updatedAt: new Date().toISOString() });
+                updateDashboard(inputUrls, inputManual);
+                syncIdc.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+            } catch (e) { syncIdc.innerHTML = 'Error'; }
+        }
+
+        window.exportToExcel = () => {
+            if (lastResultsData.length === 0) return;
+            const worksheet = XLSX.utils.json_to_sheet(lastResultsData);
+            const wscols = [{wch: 18}, {wch: 45}, {wch: 38}, {wch: 10}, {wch: 85}, {wch: 10}, {wch: 35}, {wch: 25}, {wch: 55}];
+            worksheet['!cols'] = wscols;
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "GEO Optimization");
+            const date = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `GEO_Batch_Report_${date}.xlsx`);
+        };
+
+        async function executeOptimization() {
+            const btn = document.getElementById('submit-btn');
+            const outputContainer = document.getElementById('output-container');
+            const resultArea = document.getElementById('result-area');
+            const targetUrls = document.getElementById('url-input').value;
+            const fileInput = document.getElementById('file-input');
+            const kbUrls = document.getElementById('kb-urls').value;
+            const kbManual = document.getElementById('kb-manual').value;
+            const level = document.getElementById('current-level').value;
+            const geo = document.getElementById('pref-geo').value;
+            const strategy = document.getElementById('title-strategy').value;
+
+            if (!targetUrls.trim() && fileInput.files.length === 0) { 
+                alert(currentLang === 'zh' ? "請輸入網址或上傳規格文件。" : "Please provide URLs or upload files."); 
+                return; 
+            }
+
+            btn.disabled = true;
+            resultArea.classList.remove('hidden');
+            resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            const t = i18n[currentLang];
+            outputContainer.innerHTML = `
+                <div class="flex flex-col items-center py-32 text-blue-500">
+                    <i class="fas fa-atom animate-spin text-7xl mb-8"></i>
+                    <p class="font-black text-2xl tracking-[0.4em] uppercase animate-pulse">${t.procTitle}</p>
+                    <p class="text-sm text-slate-400 mt-4 font-bold tracking-widest uppercase">${t.procSub}</p>
+                </div>`;
+
+            let fileNames = Array.from(fileInput.files).map(f => f.name).join(', ');
+            const brandName = currentLang === 'zh' ? '研華' : 'Advantech';
+            const targetLangLabel = currentLang === 'zh' ? 'Traditional Chinese (繁體中文)' : 'English';
+            
+            // 定義動態字數指令
+            const titleLimit = currentLang === 'zh' ? "25 - 35 個中文字" : "50 - 65 characters";
+            const descLimit = currentLang === 'zh' ? "75 - 85 個中文字" : "150 - 170 characters";
+
+            let strategyInstruction = "";
+            if(strategy === "keyword_first") {
+                strategyInstruction = `標題策略：執行「關鍵字領先模式」。[TITLE] 的前部必須包含產品核心功能關鍵字。同時，必須在末端強制加上「 | ${brandName}」。`;
+            } else if(strategy === "brand_first") {
+                strategyInstruction = `標題策略：執行「品牌領先模式」。[TITLE] 必須以「${brandName} [MODEL]」開頭。末端嚴禁重複。`;
+            } else {
+                strategyInstruction = `標題策略：智慧模式。標題中必須出現「${brandName}」一次。`;
+            }
+
+            const systemPrompt = `You are a professional IPC (Industrial PC) marketing expert. Your task is to perform GEO/SEO optimization.
+            
+            **OUTPUT LANGUAGE**: You MUST output all content in **${targetLangLabel}**.
+            
+            **CORE CONSTRAINTS (Strictly Enforced)**:
+            1. **TITLE LIMIT**: Must be strictly between **${titleLimit}** (including brand suffix).
+            2. **DESCRIPTION LIMIT**: Must be between **${descLimit}**. DO NOT exceed this.
+            3. **MODEL EXTRACTION**: Identify and output [MODEL].
+            4. **${strategyInstruction}**
+            
+            **LOGIC**:
+            - Identify product DNA (Medical, Vehicle, Rugged, etc.).
+            - Generate appropriate [TAGS] and [CATEGORY]. 
+            - Generate exactly 3 high-quality [FAQ].
+            
+            **FORMAT**:
+            ### [URL_START] {Target}
+            [MODEL] {Model Name}
+            [TITLE] {Optimized Content}
+            [DESCRIPTION] {Optimized Content}
+            [TAGS] {Suggested Tags}
+            [CATEGORY] {Suggested Category}
+            [FAQ] {3 Questions & Answers}`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: `Targets: ${targetUrls}\nFiles: ${fileNames}\nKnowledge: ${kbUrls}\nLevel: ${level}, Engine: ${geo}` }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        tools: [{ "google_search": {} }]
+                    })
+                });
+                const data = await response.json();
+                renderCards(data.candidates?.[0]?.content?.parts?.[0]?.text || "");
+            } catch (e) {
+                outputContainer.innerHTML = `<div class="p-10 text-center text-red-500 font-bold">API ERROR</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderCards(text) {
+            const container = document.getElementById('output-container');
+            container.innerHTML = "";
+            const t = i18n[currentLang];
+            const segments = text.split(/###\s*\[?URL_START\]?/gi).filter(s => s.trim() !== "");
+
+            if (segments.length === 0) {
+                container.innerHTML = `<div class="p-20 text-center text-slate-400 font-black italic">Parse Failed. Try again.</div>`;
+                return;
+            }
+
+            lastResultsData = []; 
+
+            segments.forEach(seg => {
+                const lines = seg.trim().split('\n');
+                const url = lines[0].replace(/[\[\]]/g, "").trim();
+                const content = lines.slice(1).join('\n');
+
+                const extract = (key) => {
+                    const pattern = new RegExp(`\\[?${key}\\]?\\s*[:：]?\\s*([\\s\\S]*?)(?=\\s*\\[|\\s*###|$)`, "i");
+                    const match = content.match(pattern);
+                    return match ? match[1].trim() : "N/A";
+                };
+
+                const model = extract("MODEL");
+                const title = extract("TITLE");
+                const desc = extract("DESCRIPTION");
+                const tags = extract("TAGS");
+                const cat = extract("CATEGORY");
+                const faq = extract("FAQ");
+
+                const titleClean = detox(title);
+                const descClean = detox(desc);
+
+                lastResultsData.push({
+                    "Product Model": detox(model),
+                    "Target URL": url,
+                    "Optimized Title": titleClean,
+                    "Title Length": titleClean.length,
+                    "Meta Description": descClean,
+                    "Desc Length": descClean.length,
+                    "Suggested Tags": detox(tags),
+                    "Category": detox(cat),
+                    "Expert FAQ": detox(faq)
+                });
+
+                const card = document.createElement('div');
+                card.className = "bg-white border border-blue-50 rounded-[3rem] shadow-sm mb-20 overflow-hidden transition-all hover:shadow-2xl";
+                card.innerHTML = `
+                    <div class="bg-[#005bac] px-10 py-6 flex justify-between items-center">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-white/60 font-black uppercase tracking-widest">${detox(model) || 'IPC MODEL'}</span>
+                            <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3"></i>${url}</span>
+                        </div>
+                        <button onclick="copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n' + detox(faq))}" class="text-[11px] bg-white/20 hover:bg-white/40 text-white px-6 py-3 rounded-2xl font-black uppercase">${t.copyAll}</button>
+                    </div>
+                    <div class="p-16 space-y-16 text-slate-800">
+                        <div>
+                            <div class="flex justify-between items-center mb-5">
+                                <span class="text-[11px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">${currentLang === 'zh' ? '優化標題' : 'Optimized Title'} (${titleClean.length} ${currentLang === 'zh' ? '字' : 'Chars'})</span>
+                                <button onclick="copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="text-[11px] text-blue-400 font-bold underline decoration-2 underline-offset-8">${t.copySingle}</button>
+                            </div>
+                            <div class="text-3xl font-black leading-tight">${renderVisual(title)}</div>
+                        </div>
+                        <div class="border-t border-slate-50 pt-12">
+                            <div class="flex justify-between items-center mb-5">
+                                <span class="text-[11px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">${currentLang === 'zh' ? 'Meta 描述' : 'Meta Description'} (${descClean.length} ${currentLang === 'zh' ? '字' : 'Chars'})</span>
+                                <button onclick="copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="text-[11px] text-blue-400 font-bold underline decoration-2 underline-offset-8">${t.copySingle}</button>
+                            </div>
+                            <div class="text-xl leading-relaxed text-slate-600 font-medium">${renderVisual(desc)}</div>
+                        </div>
+                        <div class="border-t border-slate-50 pt-12">
+                            <div class="flex justify-between items-center mb-5">
+                                <span class="text-[11px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">Expert FAQ</span>
+                                <button onclick="copyToClip(this)" data-content="${encodeURIComponent(detox(faq))}" class="text-[11px] text-blue-400 font-bold underline decoration-2 underline-offset-8">${t.copySingle}</button>
+                            </div>
+                            <div class="text-lg whitespace-pre-wrap leading-relaxed text-slate-700 font-medium">${renderVisual(faq)}</div>
+                        </div>
+                    </div>
+                    <div class="px-16 py-10 bg-slate-50 border-t border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div class="text-[12px] text-slate-400 italic space-y-2 font-medium">
+                            <p><strong>${t.tagLabel}</strong> ${detox(tags)}</p>
+                            <p><strong>${t.catLabel}</strong> ${detox(cat)}</p>
+                        </div>
+                        <button onclick="copyToClip(this)" data-content="${encodeURIComponent('標籤: ' + detox(tags) + '\n分類: ' + detox(cat))}" class="text-[11px] text-slate-300 hover:text-slate-600 font-black border-2 border-slate-200 px-6 py-3 rounded-2xl transition-all">${t.copyMeta}</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            if (lastResultsData.length > 0) {
+                document.getElementById('export-btn-container').classList.remove('hidden');
+            }
+        }
+
+        function copyToClip(btn, type = 'single') {
+            const content = decodeURIComponent(btn.getAttribute('data-content'));
+            const el = document.createElement('textarea');
+            el.value = content;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            const oldText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            setTimeout(() => btn.innerHTML = oldText, 2000);
+        }
+
+        window.loadSharedKnowledge = () => loadSharedKnowledge(false);
+        window.autoBrainSync = autoBrainSync;
+        window.executeOptimization = executeOptimization;
+        window.copyToClip = copyToClip;
+        window.resetKnowledge = async () => {
+            if (!isDataInitialLoaded) return;
+            if (!confirm(i18n[currentLang].confirmReset)) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
+                await setDoc(docRef, { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() });
+                document.getElementById('kb-urls').value = "";
+                document.getElementById('kb-manual').value = "";
+                updateDashboard("", "");
+            } catch (e) { console.error(e); }
+        };
+
+        window.onload = () => { updateUILanguage(); initializeCloud(); document.getElementById('file-input').addEventListener('change', updateFileDisplay); };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Noto Sans TC', 'Inter', sans-serif; background-color: #f8fafc; color: #334155; scroll-behavior: smooth; }
+        .primary-blue { color: #005bac; }
+        .bg-primary-blue { background-color: #005bac; }
+        .white-panel { background: #ffffff; border-radius: 2.5rem; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05); border: 1px solid #f1f5f9; }
+        .input-focus:focus { border-color: #005bac; box-shadow: 0 0 0 6px rgba(0, 91, 172, 0.04); }
+        .stat-card { background: #fff; border: 1px solid #f1f5f9; padding: 12px 24px; border-radius: 1.2rem; font-size: 13px; font-weight: 900; color: #64748b; }
+        .sync-badge { font-size: 11px; padding: 4px 16px; border-radius: 999px; background: #fff; color: #64748b; font-weight: 900; border: 1px solid #e2e8f0; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+    <nav class="bg-white border-b border-slate-100 p-8 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-6">
+                <div class="w-12 h-12 bg-primary-blue rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-microchip text-white text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black primary-blue tracking-tighter uppercase italic leading-none" data-i18n="navTitle">GEO 工控標題描述生成器</h1>
+                    <p class="text-[10px] text-slate-400 uppercase font-black tracking-[0.4em] mt-1" data-i18n="navVer">v1.8.0 Multi-Lang Edition</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <button onclick="toggleLanguage()" class="lang-btn bg-slate-50 hover:bg-slate-100 text-slate-500 font-black text-[10px] px-5 py-2.5 rounded-xl border border-slate-100 flex items-center gap-2 transition-all active:scale-95">
+                    <i class="fas fa-globe"></i> 中 / EN
+                </button>
+                <div id="auth-status" class="text-[10px] font-black uppercase tracking-widest flex items-center gap-4 px-6 py-2.5 rounded-full border border-slate-100 shadow-inner">
+                    Connecting...
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow max-w-7xl mx-auto w-full p-6 md:p-12 space-y-12">
+        <section class="white-panel p-10 bg-white shadow-xl">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-8">
+                <h2 class="text-xl font-black flex items-center gap-5 primary-blue">
+                    <span class="bg-primary-blue text-white w-8 h-8 rounded-xl flex items-center justify-center text-xs">1</span>
+                    <span data-i18n="sec1Title">本次優化產品 (建議一次不要超過十個)</span>
+                </h2>
+                <div class="flex items-center gap-5 bg-slate-50 px-6 py-3 rounded-2xl border border-slate-100 shadow-inner">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest" data-i18n="pageLevel">頁面層級:</span>
+                    <select id="current-level" class="bg-transparent border-none text-sm font-black primary-blue outline-none cursor-pointer">
+                        <option value="Product">產品詳情頁 (PDP)</option>
+                        <option value="Category">產品線頁面 (PLP)</option>
+                        <option value="Home">企業官方首頁 (Home)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="space-y-6">
+                <textarea id="url-input" class="w-full h-40 p-8 bg-slate-50 border border-slate-100 rounded-[2rem] text-base input-focus outline-none custom-scrollbar font-medium" data-i18n="urlPlaceholder" placeholder="在此貼入網址..."></textarea>
+                <div class="border-2 border-dashed border-slate-100 rounded-[2rem] p-8 flex flex-col items-center bg-slate-50 group hover:bg-slate-100 transition-all relative cursor-pointer">
+                    <i class="fas fa-file-pdf text-4xl text-slate-300 mb-3 group-hover:scale-110 transition-all"></i>
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]" data-i18n="pdfTitle">Drop Specs (PDF Only)</span>
+                    <input type="file" id="file-input" multiple class="absolute inset-0 opacity-0 cursor-pointer">
+                </div>
+                <div id="file-status-display" class="hidden text-xs font-medium px-6 py-3 bg-green-50 border border-green-100 rounded-xl flex items-center transition-all animate-in fade-in slide-in-from-top-2"></div>
+            </div>
+        </section>
+
+        <section class="white-panel p-10 bg-white">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-8">
+                <div class="flex items-center gap-5">
+                    <h2 class="text-xl font-black flex items-center gap-5 text-slate-700">
+                        <span class="bg-slate-200 text-slate-600 w-8 h-8 rounded-xl flex items-center justify-center text-xs">2</span>
+                        <span data-i18n="sec2Title">團隊共享累積大腦</span>
+                    </h2>
+                    <span id="sync-indicator" class="sync-badge"><i class="fas fa-check"></i></span>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="loadSharedKnowledge()" class="text-[10px] font-black text-blue-500 hover:text-blue-700 uppercase flex items-center gap-3 bg-blue-50 px-6 py-2.5 rounded-xl border border-blue-100 shadow-sm transition-all hover:-translate-y-1">
+                        <i id="reload-icon" class="fas fa-sync-alt"></i> <span data-i18n="btnReload">刷新雲端</span>
+                    </button>
+                    <button onclick="resetKnowledge()" class="text-[10px] font-black text-red-400 hover:text-red-600 uppercase flex items-center gap-3 bg-red-50 px-6 py-2.5 rounded-xl border border-red-100 shadow-sm transition-all hover:-translate-y-1">
+                        <i class="fas fa-trash-alt"></i> <span data-i18n="btnReset">重置數據</span>
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div class="space-y-4">
+                    <label class="text-[10px] font-black text-slate-400 uppercase block tracking-[0.3em] ml-4" data-i18n="kbUrlLabel">累積背景網址</label>
+                    <textarea id="kb-urls" onblur="autoBrainSync()" class="w-full h-48 p-8 bg-slate-50 border border-slate-100 rounded-[2rem] text-sm focus:border-blue-500 outline-none custom-scrollbar font-medium"></textarea>
+                    <div class="stat-card inline-block">URLs: <span id="url-count" class="primary-blue font-black">0</span></div>
+                </div>
+                <div class="space-y-4">
+                    <label class="text-[10px] font-black text-slate-400 uppercase block tracking-[0.3em] ml-4" data-i18n="kbManualLabel">技術優勢銀行</label>
+                    <textarea id="kb-manual" onblur="autoBrainSync()" class="w-full h-48 p-8 bg-slate-50 border border-slate-100 rounded-[2rem] text-sm focus:border-blue-500 outline-none custom-scrollbar font-medium"></textarea>
+                    <div class="stat-card inline-block">Chars: <span id="char-count" class="primary-blue font-black">0</span></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="flex flex-col items-center gap-10 py-12 bg-slate-50 rounded-[3rem] border-2 border-white shadow-inner">
+            <div class="flex flex-wrap justify-center gap-10">
+                <div class="text-center">
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-4 block tracking-[0.4em]" data-i18n="geoLabel">GEO 強化引擎</label>
+                    <select id="pref-geo" class="p-5 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-black primary-blue outline-none w-64 shadow-xl hover:border-blue-500 transition-all cursor-pointer">
+                        <option value="General SEO">標準優化 (Balanced)</option>
+                        <option value="Google SGE">Google AI Overviews</option>
+                        <option value="SearchGPT">SearchGPT</option>
+                        <option value="Perplexity AI">Perplexity Pro</option>
+                    </select>
+                </div>
+                <div class="text-center">
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-4 block tracking-[0.4em]" data-i18n="titleStrategyLabel">標題顯示策略</label>
+                    <select id="title-strategy" class="p-5 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-black primary-blue outline-none w-80 shadow-xl hover:border-blue-500 transition-all cursor-pointer">
+                        <option value="smart_auto">智慧自動 (專家模式)</option>
+                        <option value="keyword_first">關鍵字領先 (攻勢模式)</option>
+                        <option value="brand_first">品牌與型號領先 (守勢模式)</option>
+                    </select>
+                </div>
+            </div>
+            <button id="submit-btn" onclick="executeOptimization()" class="bg-[#005bac] text-white font-black rounded-full py-5 px-16 text-lg shadow-2xl shadow-blue-900/30 flex items-center justify-center gap-6 hover:bg-[#004a8d] hover:-translate-y-2 transition-all active:scale-95 group overflow-hidden border-4 border-white/10">
+                <i class="fas fa-rocket text-xl group-hover:rotate-12 transition-transform text-yellow-300"></i>
+                <span id="submit-btn-text" class="tracking-[0.4em]">生成GEO優化內容</span>
+            </button>
+        </div>
+
+        <section id="result-area" class="hidden bg-[#f1f5f9] rounded-[5rem] p-12 md:p-20 border-4 border-white mb-64 shadow-inner scroll-mt-24">
+            <div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center mb-24 gap-8">
+                <div class="text-center md:text-left">
+                    <h3 class="text-4xl font-black primary-blue tracking-tighter uppercase italic" data-i18n="resTitle">Optimization Result</h3>
+                    <div class="h-2 w-32 bg-blue-500 rounded-full mt-8 opacity-10"></div>
+                </div>
+                <div id="export-btn-container" class="hidden animate-in fade-in zoom-in duration-500">
+                    <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white font-black px-10 py-4 rounded-2xl flex items-center gap-4 shadow-xl transition-all hover:-translate-y-1 active:scale-95">
+                        <i class="fas fa-file-excel text-xl"></i>
+                        <span id="export-btn-text" class="tracking-widest" data-i18n="btnExport">下載 Excel 報告</span>
+                    </button>
+                </div>
+            </div>
+            <div id="output-container"></div>
+        </section>
+    </main>
+</body>
+</html>
