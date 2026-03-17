@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEO內容生成器 v1.11.7</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ipc-global-production-v1';
+        
+        const apiKey = ""; 
+
+        let isAuthReady = false;
+        let isDataInitialLoaded = false;
+        let currentLang = 'zh';
+        let lastResultsData = [];
+        let currentEngineMode = 'GEO';
+        let currentAuthStatusState = 'connecting'; 
+
+        const i18n = {
+            zh: {
+                navTitle: "GEO 內容生成系統",
+                navVer: "v1.11.7 模型名稱校準版",
+                authConnecting: "正在連接雲端...",
+                authSuccess: "雲端已連線",
+                authError: "連線異常",
+                sec1Title: "目標優化產品",
+                pageLevel: "頁面層級",
+                levelPDP: "產品詳情頁 (PDP)",
+                levelPLP: "產品線頁面 (PLP)",
+                levelHome: "企業首頁 (Home)",
+                urlPlaceholder: "請輸入產品網址 (支援多筆，請以換行或逗號分隔)...",
+                pdfTitle: "或拖放實體規格書 (PDF / TXT)",
+                fileSelected: "已載入檔案：",
+                sec2Title: "企業知識庫 (Knowledge Base)",
+                kbUrlLabel: "關聯知識網址",
+                kbManualLabel: "品牌專利與術語文件",
+                kbUrlPlaceholder: "輸入相關技術白皮書或系列總覽網址...",
+                kbManualPlaceholder: "輸入品牌固定標語、專有名詞解釋...",
+                syncStatus: "自動同步中",
+                btnReload: "從雲端刷新",
+                btnReset: "清除資料",
+                geoLabel: "目標優化引擎",
+                titleStrategyLabel: "標題生成策略",
+                strategyAuto: "智慧動態平衡 (預設)",
+                strategyKeyword: "搜尋意圖優先 (攻勢)",
+                strategyBrand: "品牌聲量優先 (守勢)",
+                btnSubmit: "執行 AI 內容生成",
+                resTitle: "優化產出結果",
+                btnExport: "匯出 Excel 報告",
+                procTitle: "GEO Engine Processing...",
+                procSub: "正在分析品牌定位與價值鏈特徵...",
+                copyAll: "複製全部",
+                copySingle: "複製",
+                tagLabel: "實體標籤 (Entities):",
+                catLabel: "建議分類:",
+                copyMeta: "複製分類標籤",
+                confirmReset: "確定要清除知識庫資料嗎？"
+            },
+            en: {
+                navTitle: "GEO Content System",
+                navVer: "v1.11.7 Model API Fixed",
+                authConnecting: "Connecting...",
+                authSuccess: "Cloud Connected",
+                authError: "Auth Error",
+                sec1Title: "Target Optimization",
+                pageLevel: "Page Level",
+                levelPDP: "Product Detail (PDP)",
+                levelPLP: "Product Line (PLP)",
+                levelHome: "Corporate Home",
+                urlPlaceholder: "Enter target URLs (separated by comma or newline)...",
+                pdfTitle: "Or drop specification files (PDF / TXT)",
+                fileSelected: "File loaded:",
+                sec2Title: "Corporate Knowledge Base",
+                kbUrlLabel: "Reference URLs (Optional)",
+                kbManualLabel: "Brand Patents & Terminology (Optional)",
+                kbUrlPlaceholder: "Enter related technical whitepapers or series overview URLs...",
+                kbManualPlaceholder: "Enter brand slogans, proprietary terminology explanations...",
+                syncStatus: "Auto Syncing",
+                btnReload: "Reload from Cloud",
+                btnReset: "Clear Data",
+                geoLabel: "Target Engine",
+                titleStrategyLabel: "Title Strategy",
+                strategyAuto: "Smart Balance (Default)",
+                strategyKeyword: "Intent First (Offensive)",
+                strategyBrand: "Brand First (Defensive)",
+                btnSubmit: "Execute AI Generation",
+                resTitle: "Optimization Results",
+                btnExport: "Export Excel",
+                procTitle: "GEO Engine Processing...",
+                procSub: "Executing dual-track extraction and boundary protection...",
+                copyAll: "Copy All",
+                copySingle: "Copy",
+                tagLabel: "Entity Tags:",
+                catLabel: "Category:",
+                copyMeta: "Copy Metadata",
+                confirmReset: "Are you sure you want to clear the knowledge base?"
+            }
+        };
+
+        const renderAuthStatus = () => {
+            const statusEl = document.getElementById('auth-status');
+            const t = i18n[currentLang];
+            if (currentAuthStatusState === 'connected') {
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse mr-2"></span>${t.authSuccess}`;
+                statusEl.className = "text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-full flex items-center shadow-inner";
+            } else if (currentAuthStatusState === 'error') {
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>${t.authError}`;
+                statusEl.className = "text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-4 py-2 rounded-full flex items-center shadow-inner";
+            } else {
+                statusEl.innerHTML = `<i class="fas fa-circle-notch fa-spin mr-2"></i>${t.authConnecting}`;
+                statusEl.className = "text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-full flex items-center shadow-inner";
+            }
+        };
+
+        const updateUILanguage = () => {
+            const t = i18n[currentLang];
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (el.tagName === 'TEXTAREA') el.placeholder = t[key];
+                else el.innerText = t[key];
+            });
+            document.getElementById('current-level').options[0].text = t.levelPDP;
+            document.getElementById('current-level').options[1].text = t.levelPLP;
+            document.getElementById('current-level').options[2].text = t.levelHome;
+            document.getElementById('title-strategy').options[0].text = t.strategyAuto;
+            document.getElementById('title-strategy').options[1].text = t.strategyKeyword;
+            document.getElementById('title-strategy').options[2].text = t.strategyBrand;
+            const geoSelect = document.getElementById('pref-geo');
+            geoSelect.options[0].text = currentLang === 'zh' ? "標準 SEO 優化" : "Standard SEO";
+            geoSelect.options[1].text = "Gemini AI";
+            geoSelect.options[2].text = "ChatGPT";
+            geoSelect.options[3].text = "Perplexity";
+            geoSelect.options[4].text = "Google Ads (RSA 廣告素材)";
+            document.getElementById('submit-btn-text').innerText = t.btnSubmit;
+            if(document.getElementById('export-btn-text')) document.getElementById('export-btn-text').innerText = t.btnExport;
+            renderAuthStatus();
+            updateFileDisplay();
+        };
+
+        window.toggleLanguage = () => {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUILanguage();
+        };
+
+        const updateFileDisplay = () => {
+            const fileInput = document.getElementById('file-input');
+            const display = document.getElementById('file-status-display');
+            if (fileInput.files.length > 0) {
+                const names = Array.from(fileInput.files).map(f => f.name).join(', ');
+                display.innerHTML = `<i class="fas fa-file-check text-blue-600 mr-2"></i><span class="font-medium text-slate-700">${i18n[currentLang].fileSelected}</span> <span class="text-slate-900 font-semibold ml-1">${names}</span>`;
+                display.classList.remove('hidden');
+            } else { display.classList.add('hidden'); }
+        };
+
+        const initializeCloud = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else { await signInAnonymously(auth); }
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        isAuthReady = true;
+                        currentAuthStatusState = 'connected';
+                        renderAuthStatus();
+                        await loadSharedKnowledge(true);
+                    }
+                });
+            } catch (e) { currentAuthStatusState = 'error'; renderAuthStatus(); }
+        };
+
+        async function loadSharedKnowledge(isSilent = false) {
+            if (!isAuthReady) return;
+            const loaderIcon = document.getElementById('reload-icon');
+            if(!isSilent && loaderIcon) loaderIcon.classList.add('fa-spin');
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('kb-urls').value = data.kbUrls || "";
+                    document.getElementById('kb-manual').value = data.kbManual || "";
+                    updateDashboard(data.kbUrls || "", data.kbManual || "");
+                }
+                isDataInitialLoaded = true;
+            } catch (e) { }
+            finally { if(!isSilent && loaderIcon) loaderIcon.classList.remove('fa-spin'); }
+        }
+
+        function updateDashboard(urls, manual) {
+            document.getElementById('url-count').innerText = urls.split('\n').filter(u => u.trim() !== "").length;
+            document.getElementById('char-count').innerText = manual.length;
+        }
+
+        function detox(text) {
+            if(!text) return "";
+            return text.replace(/\(\d+\s*characters?\)/gi, "").replace(/\(\d+\s*字\)/gi, "").replace(/Geo|SEO|SGE/gi, "").replace(/[\*#_`~]/g, "").replace(/^[:：\s]+/, "").trim();
+        }
+
+        function getByteLen(str) {
+            let len = 0;
+            for (let i = 0; i < str.length; i++) {
+                if (str.charCodeAt(i) > 255) len += 2; else len += 1; 
+            }
+            return len;
+        }
+
+        async function autoBrainSync() {
+            if (!isDataInitialLoaded || !isAuthReady) return;
+            const syncIdc = document.getElementById('sync-indicator');
+            syncIdc.innerHTML = '<i class="fas fa-spinner fa-spin text-blue-500"></i>';
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
+            const inputUrls = document.getElementById('kb-urls').value;
+            const inputManual = document.getElementById('kb-manual').value;
+            try {
+                await setDoc(docRef, { kbUrls: inputUrls, kbManual: inputManual, updatedAt: new Date().toISOString() });
+                updateDashboard(inputUrls, inputManual);
+                syncIdc.innerHTML = '<i class="fas fa-check text-emerald-500"></i>';
+            } catch (e) { syncIdc.innerHTML = '<i class="fas fa-times text-red-500"></i>'; }
+        }
+
+        window.exportToExcel = () => {
+            if (lastResultsData.length === 0) return;
+            const worksheet = XLSX.utils.json_to_sheet(lastResultsData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Export");
+            const date = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `Output_Report_${date}.xlsx`);
+        };
+
+        async function extractTextFromFile(file) {
+            if (file.type === "text/plain") {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = (e) => reject(e);
+                    reader.readAsText(file);
+                });
+            } else if (file.type === "application/pdf") {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const typedarray = new Uint8Array(e.target.result);
+                            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                            let fullText = "";
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const textContent = await page.getTextContent();
+                                const pageText = textContent.items.map(item => item.str).join(" ");
+                                fullText += pageText + "\n";
+                            }
+                            resolve(fullText);
+                        } catch (err) { reject(err); }
+                    };
+                    reader.onerror = (e) => reject(e);
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            return "";
+        }
+
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const res = await fetch(url, options);
+                    if (res.ok) return await res.json();
+                    
+                    const errData = await res.json().catch(() => ({}));
+                    const errMsg = errData.error?.message || `HTTP 狀態碼: ${res.status}`;
+
+                    if (res.status === 429 || res.status >= 500) {
+                        if (i === maxRetries - 1) throw new Error(errMsg);
+                        console.warn(`API 請求受阻 (${res.status})，${delay/1000} 秒後自動重試...`);
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    } else {
+                        throw new Error(errMsg);
+                    }
+                } catch (e) {
+                    if (i === maxRetries - 1) throw e;
+                    if (e.name === 'TypeError') {
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    } else { throw e; }
+                }
+            }
+        }
+
+        async function executeOptimization() {
+            const btn = document.getElementById('submit-btn');
+            const outputContainer = document.getElementById('output-container');
+            const resultArea = document.getElementById('result-area');
+            const targetUrls = document.getElementById('url-input').value;
+            const fileInput = document.getElementById('file-input');
+            const kbUrls = document.getElementById('kb-urls').value;
+            const kbManual = document.getElementById('kb-manual').value;
+            const level = document.getElementById('current-level').value;
+            const geo = document.getElementById('pref-geo').value;
+            const strategy = document.getElementById('title-strategy').value;
+
+            if (!targetUrls.trim() && fileInput.files.length === 0) return;
+
+            btn.disabled = true;
+            const originalBtnText = document.getElementById('submit-btn-text').innerText;
+            document.getElementById('submit-btn-text').innerText = "處理中...";
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+            
+            resultArea.classList.remove('hidden');
+            resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            currentEngineMode = geo === "Google Ads" ? "ADS" : "GEO";
+            const t = i18n[currentLang];
+
+            outputContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-20 text-[#005bac]">
+                    <i class="fas fa-circle-notch fa-spin text-5xl mb-6 opacity-80"></i>
+                    <p class="font-semibold text-xl tracking-wider">${t.procTitle}</p>
+                    <p id="process-sub-msg" class="text-sm text-slate-500 mt-2 font-medium">${t.procSub}</p>
+                </div>`;
+
+            let extractedFileText = "";
+            if (fileInput.files.length > 0) {
+                document.getElementById('process-sub-msg').innerText = "Parsing local file...";
+                try { extractedFileText = await extractTextFromFile(fileInput.files[0]); } catch (e) { extractedFileText = "[File parsing failed]"; }
+            }
+
+            const targetLangLabel = currentLang === 'zh' ? 'Traditional Chinese (繁體中文)' : 'English';
+            const brandName = currentLang === 'zh' ? '研華' : 'Advantech';
+            
+            let systemPrompt = "";
+
+            if (currentEngineMode === "ADS") {
+                systemPrompt = `You are an elite Google Ads Media Buyer for the IPC sector.
+                **OUTPUT LANGUAGE**: MUST be **${targetLangLabel}**.
+                
+                **SEARCH MODE**: [PAGE LEVEL: ${level}].
+                1. If PDP: Use \`site:advantech.com "MODEL NAME"\`.
+                2. If PLP: Use \`site:advantech.com "CATEGORY NAME" solutions\`.
+                3. If Home: Use \`site:advantech.com "Company Overview" vision\`.
+
+                **STRICT Google Ads RSA RULES**:
+                1. NO MARKDOWN. 
+                2. **[ADS KEYWORDS]**: 15 high-commercial keywords.
+                3. **[ADS HEADLINES]**: 15 headlines (< 30 Bytes).
+                4. **[ADS LONG HEADLINES]**: 5 long headlines (< 90 Bytes).
+                5. **[ADS DESCRIPTIONS]**: 5 descriptions (< 90 Bytes).
+                
+                🚨 **ANTI-HALLUCINATION**: Rely ONLY on matched text. No speculation.
+                `;
+            } else {
+                let strategyInstruction = "";
+                if (strategy === "keyword_first") strategyInstruction = `Push keywords to the FRONT. Brand (" | ${brandName}") at the END.`;
+                else if (strategy === "brand_first") strategyInstruction = `Start strictly with "${brandName}".`;
+                else strategyInstruction = `Dynamically balance brand and keywords.`;
+
+                systemPrompt = `You are a professional IPC marketing expert optimizing content for modern GEO/AI engines.
+                **OUTPUT LANGUAGE**: MUST be **${targetLangLabel}**.
+
+                **SEARCH & ANCHORING MODE: [PAGE LEVEL: ${level}]**
+                1. **IF PDP**: EXACT MODEL MATCH ONLY. Reject Related Products info.
+                2. **IF PLP**: COLLATED DNA ONLY. Find shared technical baselines of the category.
+                3. **IF HOME**: CORPORATE IDENTITY ONLY. Identify global service capacity, vertical industry leadership, and corporate mission. EXCLUDE specific model specs.
+                
+                **STRICT RULES**:
+                1. **NO MARKDOWN**. PURE PLAIN TEXT. 
+                2. **CHARACTER COUNT LIMITS**: 1 Chinese = 2 spaces. 1 Eng = 1 space.
+                   - **TITLE**: UNDER 60 character spaces. (${strategyInstruction})
+                   - **DESCRIPTION**: UNDER 160 character spaces.
+                
+                🚨 **CRITICAL ANTI-HALLUCINATION** 🚨
+                - Do not invent numbers. If not explicitly found, use generic phrasing.
+
+                **ADVANCED GEO STRATEGIES**:
+                1. **[TAGS]**: 3-6 Knowledge Graph Entities.
+                2. **[GEO FEATURES]**: Exactly 5 factual bullet points (For Home: 5 key corporate strengths).
+                3. **[FAQ]**: EXACTLY THREE (3) Q&A pairs with SEMANTIC CONTRAST.
+
+                **MANDATORY FORMAT**:
+                ### [URL_START] {Target}
+                [MODEL] ...
+                [TITLE] ...
+                [DESCRIPTION] ...
+                [TAGS] ...
+                [CATEGORY] ...
+                [GEO FEATURES] ...
+                [FAQ] ...
+                `;
+            }
+
+            if (extractedFileText) {
+                systemPrompt += `\n\n====================\n🚨 [SOURCE DOCUMENT CONTENT (ABSOLUTE TRUTH)] 🚨\n${extractedFileText.substring(0, 30000)}\n\n**CRITICAL RULE**: Raw text provided. OVERRIDES search results. Extract ONLY from this text.`;
+            }
+
+            try {
+                const payload = {
+                    contents: [{ parts: [{ text: `Target URL: ${targetUrls}\nPage Level: ${level}\nKnowledge: ${kbUrls}\nRules: ${kbManual}` }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    tools: [{ "google_search": {} }]
+                };
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const responseData = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                
+                const outputText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!outputText) throw new Error("回傳資料為空 (Empty Response)");
+                renderCards(outputText, currentEngineMode);
+            } catch (e) {
+                outputContainer.innerHTML = `<div class="p-8 border border-red-200 bg-red-50 rounded-xl max-w-2xl mx-auto flex items-start gap-4"><i class="fas fa-exclamation-circle text-2xl text-red-500 mt-1"></i><div><h4 class="font-bold text-red-800 text-lg mb-2">API 請求失敗</h4><p class="text-sm text-red-600 font-mono break-all">${e.message}</p></div></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                document.getElementById('submit-btn-text').innerText = originalBtnText;
+            }
+        }
+
+        const parseList = (contentBlock) => {
+            if (!contentBlock || contentBlock === "N/A") return [];
+            return contentBlock.split('\n').map(s => s.replace(/^[-*•\d.]+\s*/, '').trim()).filter(s => s && !s.match(/^\[.*\]/));
+        };
+
+        const renderAdsItems = (items, maxBytes) => {
+            return items.map((item) => {
+                const bLen = getByteLen(item);
+                const isOver = bLen > maxBytes;
+                return `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 ${isOver ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-200'} border rounded-lg transition-colors hover:border-blue-300"><div class="flex-grow font-medium ${isOver ? 'text-red-700' : 'text-slate-700'} text-sm leading-relaxed">${item}</div><div class="flex items-center gap-3 flex-shrink-0"><span class="text-xs font-semibold ${isOver ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-200'} px-2.5 py-1 rounded-md">${bLen} / ${maxBytes}</span><button onclick="copyToClip(this)" data-content="${encodeURIComponent(item)}" class="text-slate-400 hover:text-blue-600 transition-colors p-1.5"><i class="far fa-copy"></i></button></div></div>`;
+            }).join('');
+        };
+
+        function renderCards(text, mode) {
+            const container = document.getElementById('output-container');
+            container.innerHTML = "";
+            const t = i18n[currentLang];
+            const segments = text.split(/###\s*\[?URL_START\]?/gi).filter(s => s.trim() !== "");
+            lastResultsData = []; 
+
+            segments.forEach(seg => {
+                const lines = seg.trim().split('\n');
+                const url = lines[0].replace(/[\[\]]/g, "").trim();
+                const content = lines.slice(1).join('\n');
+                const extract = (key) => {
+                    const pattern = new RegExp(`\\[?${key}\\]?\\s*[:：]?\\s*([\\s\\S]*?)(?=\\s*\\[|\\s*###|$)`, "i");
+                    const match = content.match(pattern);
+                    return match ? match[1].trim() : "N/A";
+                };
+
+                const model = extract("MODEL");
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 rounded-xl shadow-sm mb-12 overflow-hidden hover:shadow-md transition-shadow";
+
+                if (mode === "ADS") {
+                    const keywords = detox(extract("ADS KEYWORDS"));
+                    const headlines = parseList(extract("ADS HEADLINES"));
+                    const longHeadlines = parseList(extract("ADS LONG HEADLINES"));
+                    const descriptions = parseList(extract("ADS DESCRIPTIONS"));
+                    lastResultsData.push({ "Product Model": detox(model), "Target URL": url, "Ads Keywords": keywords, "Ads Headlines": headlines.join(' | '), "Ads Long Headlines": longHeadlines.join(' | '), "Ads Descriptions": descriptions.join(' | ') });
+                    card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fab fa-google"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'Google Ads RSA'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-md block">${url}</a></div></div></div><div class="p-6 space-y-8"><div><div class="flex justify-between items-center mb-3"><h5 class="text-xs font-bold text-slate-500 uppercase">BOF 關鍵字</h5><button onclick="copyToClip(this)" data-content="${encodeURIComponent(keywords)}" class="text-xs text-blue-600 font-semibold"><i class="far fa-copy"></i> 複製</button></div><div class="text-sm text-slate-700 p-4 bg-slate-50 border border-slate-100 rounded-lg">${keywords}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">廣告標題 (上限 30 Bytes)</h5><div class="space-y-2">${renderAdsItems(headlines, 30)}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">長標題 (上限 90 Bytes)</h5><div class="space-y-2">${renderAdsItems(longHeadlines, 90)}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">廣告描述 (上限 90 Bytes)</h5><div class="space-y-2">${renderAdsItems(descriptions, 90)}</div></div></div>`;
+                } else {
+                    const titleClean = detox(extract("TITLE"));
+                    const descClean = detox(extract("DESCRIPTION"));
+                    const tags = extract("TAGS");
+                    const cat = extract("CATEGORY");
+                    const featuresClean = detox(extract("GEO FEATURES"));
+                    const faqClean = detox(extract("FAQ"));
+                    const titleByteLen = getByteLen(titleClean);
+                    const descByteLen = getByteLen(descClean);
+                    lastResultsData.push({ "Product Model": detox(model), "Target URL": url, "Optimized Title": titleClean, "Title Length": titleByteLen, "Meta Description": descClean, "Desc Length": descByteLen, "Suggested Tags": detox(tags), "Category": detox(cat), "GEO Features": featuresClean, "Expert FAQ": faqClean });
+                    card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-[#005bac]/10 text-[#005bac] flex items-center justify-center"><i class="fas fa-microchip"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'IPC Entry'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-[300px] md:max-w-md block">${url}</a></div></div><button onclick="copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button></div><div class="p-6 md:p-8 space-y-8"><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">SEO Title</span><span class="text-xs font-semibold ${titleByteLen > 60 ? 'text-red-600' : 'text-emerald-600'}">${titleByteLen} / 60 Bytes</span></div><div class="p-4 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-lg md:text-xl font-bold text-slate-800">${titleClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Meta Description</span><span class="text-xs font-semibold ${descByteLen > 160 ? 'text-red-600' : 'text-emerald-600'}">${descByteLen} / 160 Bytes</span></div><div class="p-4 bg-white border ${descByteLen > 160 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-sm md:text-base text-slate-600 leading-relaxed">${descClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="border border-slate-200 rounded-lg overflow-hidden"><div class="bg-slate-50 px-4 py-3 flex justify-between items-center cursor-pointer select-none" onclick="const content = this.nextElementSibling; content.classList.toggle('hidden'); const icon = this.querySelector('.toggle-icon'); icon.classList.toggle('rotate-180');"><div class="flex items-center gap-2"><i class="fas fa-list-ul text-slate-400"></i><span class="text-sm font-bold text-slate-700">GEO 特徵與價值鏈核對</span></div><i class="fas fa-chevron-down text-slate-400 transition-transform toggle-icon"></i></div><div class="hidden p-4 bg-white border-t border-slate-200"><p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">${featuresClean}</p></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Expert FAQ</span></div><div class="p-5 bg-slate-50 border border-slate-200 rounded-lg relative"><p class="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">${faqClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div></div><div class="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4"><div class="flex flex-col gap-1 text-sm"><p><span class="text-slate-500 font-semibold mr-2">${t.catLabel}</span> <span class="text-slate-800 font-medium">${detox(cat)}</span></p><p><span class="text-slate-500 font-semibold mr-2">${t.tagLabel}</span> <span class="text-slate-800 font-medium">${detox(tags)}</span></p></div><button onclick="copyToClip(this)" data-content="${encodeURIComponent('實體標籤: ' + detox(tags) + '\n分類: ' + detox(cat))}" class="text-xs bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"><i class="far fa-copy"></i> ${t.copyMeta}</button></div>`;
+                }
+                container.appendChild(card);
+            });
+            if (lastResultsData.length > 0) document.getElementById('export-btn-container').classList.remove('hidden');
+        }
+
+        window.copyToClip = function(btn, type = 'single') {
+            const content = decodeURIComponent(btn.getAttribute('data-content'));
+            const el = document.createElement('textarea');
+            el.value = content;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check text-emerald-500"></i> Copied';
+            setTimeout(() => btn.innerHTML = originalHTML, 2000);
+        };
+
+        window.loadSharedKnowledge = () => loadSharedKnowledge(false);
+        window.autoBrainSync = autoBrainSync;
+        window.executeOptimization = executeOptimization;
+        window.resetKnowledge = async () => {
+            if (!isDataInitialLoaded || !confirm(i18n[currentLang].confirmReset)) return;
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5'), { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() });
+                document.getElementById('kb-urls').value = ""; document.getElementById('kb-manual').value = ""; updateDashboard("", "");
+            } catch (e) {}
+        };
+
+        window.onload = () => { updateUILanguage(); initializeCloud(); document.getElementById('file-input').addEventListener('change', updateFileDisplay); };
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #f1f5f9; color: #334155; scroll-behavior: smooth; }
+        .input-focus:focus { border-color: #005bac; box-shadow: 0 0 0 3px rgba(0, 91, 172, 0.1); outline: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <nav class="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
+                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.7 模型名稱校準版</p></div>
+            </div>
+            <div class="flex items-center gap-4">
+                <button onclick="toggleLanguage()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2"><i class="fas fa-globe"></i> 中 / EN</button>
+                <div id="auth-status" class="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-full flex items-center shadow-inner transition-colors duration-500"><i class="fas fa-circle-notch fa-spin mr-2"></i> Connecting...</div>
+            </div>
+        </div>
+    </nav>
+    <main class="flex-grow max-w-6xl mx-auto w-full p-4 sm:p-8 space-y-8">
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3"><span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-md flex items-center justify-center text-sm">1</span><span data-i18n="sec1Title">目標優化產品</span></h2>
+                <div class="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200"><span class="text-xs font-semibold text-slate-500" data-i18n="pageLevel">頁面層級</span><select id="current-level" class="bg-transparent border-none text-sm font-bold text-[#005bac] outline-none cursor-pointer p-0 pr-4"><option value="Product">產品詳情頁 (PDP)</option><option value="Category">產品線頁面 (PLP)</option><option value="Home">企業首頁 (Home)</option></select></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Target URLs</label><textarea id="url-input" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none leading-relaxed" data-i18n="urlPlaceholder" placeholder="請輸入產品網址..."></textarea></div>
+                <div class="flex flex-col"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Files</label><div class="flex-grow border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors relative cursor-pointer group"><i class="fas fa-file-upload text-3xl text-slate-400 mb-3 group-hover:text-blue-500"></i><span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">或拖放實體規格書 (PDF / TXT)</span><input type="file" id="file-input" multiple accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"></div><div id="file-status-display" class="hidden mt-3 text-xs font-medium px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-800 rounded-lg flex items-center"></div></div>
+            </div>
+        </section>
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div class="flex items-center gap-3"><h2 class="text-lg font-bold text-slate-800 flex items-center gap-3"><span class="bg-slate-200 text-slate-600 w-7 h-7 rounded-md flex items-center justify-center text-sm">2</span><span data-i18n="sec2Title">企業知識庫 (Knowledge Base)</span></h2><span id="sync-indicator" class="ml-2 text-xs text-slate-400"><i class="fas fa-check text-emerald-500"></i></span></div>
+                <div class="flex gap-2"><button onclick="loadSharedKnowledge()" class="text-xs font-semibold text-slate-600 hover:text-blue-600 bg-white px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2"><i id="reload-icon" class="fas fa-sync-alt"></i> <span data-i18n="btnReload">從雲端刷新</span></button><button onclick="resetKnowledge()" class="text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 px-4 py-2 rounded-md border border-red-100 shadow-sm flex items-center gap-2"><i class="fas fa-trash-alt"></i> <span data-i18n="btnReset">清除資料</span></button></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div><div class="flex justify-between items-end mb-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbUrlLabel">關聯知識網址</label><span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">URLs: <span id="url-count">0</span></span></div><textarea id="kb-urls" data-i18n="kbUrlPlaceholder" onblur="autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="輸入相關技術白皮書網址..."></textarea></div>
+                <div><div class="flex justify-between items-end mb-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbManualLabel">品牌專利與術語文件</label><span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Chars: <span id="char-count">0</span></span></div><textarea id="kb-manual" data-i18n="kbManualPlaceholder" onblur="autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="輸入品牌固定標語、術語..."></textarea></div>
+            </div>
+        </section>
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex flex-col sm:flex-row w-full md:w-auto gap-4">
+                <div class="w-full sm:w-56"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label><select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="標準SEO優化">標準SEO優化</option><option value="Gemini">Gemini</option><option value="ChatGPT">ChatGPT</option><option value="Perplexity">Perplexity</option><option value="Google Ads">Google Ads (RSA廣告素材)</option></select></div>
+                <div class="w-full sm:w-64"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="titleStrategyLabel">標題生成策略</label><select id="title-strategy" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="smart_auto">智慧動態平衡</option><option value="keyword_first">搜尋意圖優先</option><option value="brand_first">品牌聲量優先</option></select></div>
+            </div>
+            <button id="submit-btn" onclick="executeOptimization()" class="w-full md:w-auto bg-[#005bac] hover:bg-[#004a8d] text-white px-8 py-3.5 rounded-lg font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3"><i class="fas fa-magic"></i><span id="submit-btn-text" data-i18n="btnSubmit">執行 AI 內容生成</span></button>
+        </div>
+        <section id="result-area" class="hidden mt-12 scroll-mt-24">
+            <div class="flex flex-col sm:flex-row justify-between items-end mb-6 gap-4">
+                <div><h3 class="text-2xl font-bold text-slate-800" data-i18n="resTitle">優化產出結果</h3><div class="h-1 w-16 bg-[#005bac] rounded-full mt-3"></div></div>
+                <div id="export-btn-container" class="hidden animate-in fade-in zoom-in duration-300"><button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2 shadow-sm"><i class="fas fa-file-excel"></i><span id="export-btn-text" data-i18n="btnExport">匯出 Excel 報告</span></button></div>
+            </div>
+            <div id="output-container" class="space-y-8"></div>
+        </section>
+    </main>
+</body>
+</html>
