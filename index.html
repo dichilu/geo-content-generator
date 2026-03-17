@@ -15,13 +15,22 @@
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // 整合您專屬的 Firebase 專案金鑰
+        const firebaseConfig = {
+            apiKey: "AIzaSyAw9QPp3w4ZaKx92ql3EWO8hJjxOVfX4z8",
+            authDomain: "geo-content-generator.firebaseapp.com",
+            projectId: "geo-content-generator",
+            storageBucket: "geo-content-generator.firebasestorage.app",
+            messagingSenderId: "206909787804",
+            appId: "1:206909787804:web:66958b4b68052a0528e759"
+        };
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ipc-global-production-v1';
+        const appId = 'geo-content-generator-v1'; // 資料庫路徑識別碼
         
-        const apiKey = ""; 
+        // 您的 Gemini API Key
+        const apiKey = "AIzaSyBsMBlYFbJybipsMDNJGcQK0HmRLqMw25A"; 
 
         let isAuthReady = false;
         let isDataInitialLoaded = false;
