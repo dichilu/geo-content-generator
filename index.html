@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.11.9 GitHub 修復版</title>
+    <title>GEO內容生成器 v1.11.15 關鍵字分隔修正版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,7 +15,6 @@
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        // 💡 [修復點 2] 補回 Firebase 的前端公開配置。這能確保在 GitHub 上能夠順利初始化，不會卡在 Connecting。
         let firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
             firebaseConfig = JSON.parse(__firebase_config);
@@ -35,7 +34,6 @@
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ipc-global-production-v1';
         
-        // 系統預設留空，通過 LocalStorage 讀取使用者設定的金鑰
         const apiKey = ""; 
         let localApiKey = localStorage.getItem('ipc_gemini_apikey') || "";
 
@@ -49,7 +47,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.11.9 GitHub 修復版",
+                navVer: "v1.11.15 關鍵字分隔修正版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -95,7 +93,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.11.9 GitHub Fix",
+                navVer: "v1.11.15 Keyword Separator Fix",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -186,7 +184,6 @@
             updateUILanguage();
         };
 
-        // API Key Modal Logic
         window.toggleApiModal = () => {
             const modal = document.getElementById('api-modal');
             const content = document.getElementById('api-modal-content');
@@ -329,7 +326,6 @@
             return "";
         }
 
-        // 指數退避重試邏輯 (Exponential Backoff)
         async function fetchWithRetry(url, options, maxRetries = 5) {
             let delay = 1000;
             for (let i = 0; i < maxRetries; i++) {
@@ -340,19 +336,17 @@
                     const errData = await res.json().catch(() => ({}));
                     const errMsg = errData.error?.message || `HTTP 狀態碼: ${res.status}`;
 
-                    // 若為配額超載 (429) 或 伺服器錯誤 (5xx)，則執行重試
                     if (res.status === 429 || res.status >= 500) {
                         if (i === maxRetries - 1) throw new Error(errMsg);
                         console.warn(`API 請求受阻 (${res.status})，${delay/1000} 秒後自動重試...`);
                         await new Promise(r => setTimeout(r, delay));
                         delay *= 2;
                     } else {
-                        // 400 Bad Request 或 403 Forbidden 等不應重試之錯誤，直接拋出
                         throw new Error(errMsg);
                     }
                 } catch (e) {
                     if (i === maxRetries - 1) throw e;
-                    if (e.name === 'TypeError') { // 攔截網路層級的 Failed to fetch
+                    if (e.name === 'TypeError') { 
                         await new Promise(r => setTimeout(r, delay));
                         delay *= 2;
                     } else {
@@ -363,7 +357,6 @@
         }
 
         async function executeOptimization() {
-            // 安全防護：檢查金鑰是否存在
             if (!localApiKey) {
                 document.getElementById('api-modal-desc').innerHTML = `<span class="text-red-500 font-bold"><i class="fas fa-exclamation-triangle"></i> ${i18n[currentLang].modalApiAlert}</span><br><br>${i18n[currentLang].modalApiDesc}`;
                 toggleApiModal();
@@ -413,6 +406,7 @@
             let systemPrompt = "";
 
             if (currentEngineMode === "ADS") {
+                // 💡 [修正重點]：強制設定中文字數絕對上下限，並以嚴格語氣規定使用頓號(、)與確保詞彙不重複。
                 systemPrompt = `You are an elite Google Ads Media Buyer for the IPC sector.
                 **OUTPUT LANGUAGE**: MUST be **${targetLangLabel}**.
                 
@@ -423,12 +417,14 @@
 
                 **STRICT Google Ads RSA RULES**:
                 1. NO MARKDOWN. 
-                2. **[ADS KEYWORDS]**: 15 high-commercial keywords.
-                3. **[ADS HEADLINES]**: 15 headlines (< 30 Bytes).
-                4. **[ADS LONG HEADLINES]**: 5 long headlines (< 90 Bytes).
-                5. **[ADS DESCRIPTIONS]**: 5 descriptions (< 90 Bytes).
+                2. **[ADS KEYWORDS]**: 15 high-commercial keywords. STRICTLY SEPARATE EACH KEYWORD WITH A COMMA (、). Example: Keyword1、Keyword2、Keyword3. ALL 15 KEYWORDS MUST BE COMPLETELY UNIQUE. DO NOT REPEAT WORDS.
+                3. **[ADS HEADLINES]**: 15 headlines. LENGTH MUST BE EXACTLY 13-15 Traditional Chinese characters (26-30 Bytes). NEVER write less than 13 characters. Expand the features to fill the space! ALL 15 HEADLINES MUST BE UNIQUE.
+                4. **[ADS LONG HEADLINES]**: 5 long headlines. LENGTH MUST BE EXACTLY 40-45 Traditional Chinese characters (80-90 Bytes). Maximize the space!
+                5. **[ADS DESCRIPTIONS]**: 5 descriptions. LENGTH MUST BE EXACTLY 40-45 Traditional Chinese characters (80-90 Bytes). Maximize the space!
                 
-                🚨 **ANTI-HALLUCINATION**: Rely ONLY on matched text. No speculation.
+                🚨 **CRITICAL ANTI-HALLUCINATION (SEARCH SNIPPET MIXING)** 🚨
+                - YOU MUST VERIFY the exact model number matches the URL.
+                - If a spec is NOT explicitly linked to the TARGET model in the snippet, DO NOT invent it.
                 
                 **MANDATORY FORMAT**:
                 ### [URL_START] {Target}
@@ -450,20 +446,21 @@
                 **SEARCH & ANCHORING MODE: [PAGE LEVEL: ${level}]**
                 1. **IF PDP**: EXACT MODEL MATCH ONLY. Reject Related Products info.
                 2. **IF PLP**: COLLATED DNA ONLY. Find shared technical baselines of the category.
-                3. **IF HOME**: CORPORATE IDENTITY ONLY. Identify global service capacity, vertical industry leadership (Medical, Factory, etc.), and corporate mission. EXCLUDE specific model specs.
+                3. **IF HOME**: CORPORATE IDENTITY ONLY. Identify global service capacity, vertical industry leadership.
                 
                 **STRICT RULES**:
                 1. **NO MARKDOWN**. PURE PLAIN TEXT. 
                 2. **CHARACTER COUNT LIMITS**: 1 Chinese = 2 spaces. 1 Eng = 1 space.
-                   - **TITLE**: UNDER 60 character spaces. (${strategyInstruction})
-                   - **DESCRIPTION**: UNDER 160 character spaces.
+                   - **TITLE**: UNDER 30 Traditional Chinese characters (Max 60 Bytes). DO NOT EXCEED 60 BYTES. Aim for 25-28 characters. (${strategyInstruction})
+                   - **DESCRIPTION**: UNDER 80 Traditional Chinese characters (Max 160 Bytes). DO NOT EXCEED 160 BYTES. Aim for 70-75 characters.
                 
-                🚨 **CRITICAL ANTI-HALLUCINATION** 🚨
-                - Do not invent numbers. If not explicitly found, use generic phrasing (e.g., "High Performance" instead of "40 TOPS").
+                🚨 **CRITICAL ANTI-HALLUCINATION (SEARCH SNIPPET MIXING)** 🚨
+                - YOU MUST VERIFY the exact model number matches the URL.
+                - If a spec is NOT explicitly linked to the TARGET model in the snippet, DO NOT invent it. Return generic facts or "N/A".
 
                 **ADVANCED GEO STRATEGIES**:
                 1. **[TAGS]**: 3-6 Knowledge Graph Entities.
-                2. **[GEO FEATURES]**: Exactly 5 factual bullet points (For Home: 5 key corporate strengths).
+                2. **[GEO FEATURES]**: Exactly 5 factual bullet points. MUST START EACH POINT WITH '• '.
                 3. **[FAQ]**: EXACTLY THREE (3) Q&A pairs with SEMANTIC CONTRAST.
 
                 **MANDATORY FORMAT**:
@@ -489,7 +486,6 @@
                     tools: [{ "google_search": {} }]
                 };
 
-                // 改由動態注入使用者在介面設定的本地金鑰，並直接呼叫正式版 flash 模型
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${localApiKey}`;
                 const responseData = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 
@@ -497,7 +493,6 @@
                 if (!outputText) throw new Error("回傳資料為空 (Empty Response)");
                 renderCards(outputText, currentEngineMode);
             } catch (e) {
-                // 真實錯誤解碼顯示
                 outputContainer.innerHTML = `<div class="p-8 border border-red-200 bg-red-50 rounded-xl max-w-2xl mx-auto flex items-start gap-4"><i class="fas fa-exclamation-circle text-2xl text-red-500 mt-1"></i><div><h4 class="font-bold text-red-800 text-lg mb-2">生成失敗</h4><p class="text-sm text-red-600 font-mono break-all">${e.message}</p><p class="text-xs text-red-500 mt-3 font-semibold">*若出現錯誤，請點擊右上方「設定金鑰」檢查您的 API 金鑰是否輸入正確並具備額度。</p></div></div>`;
             } finally {
                 btn.disabled = false;
@@ -515,7 +510,7 @@
             return items.map((item) => {
                 const bLen = getByteLen(item);
                 const isOver = bLen > maxBytes;
-                return `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 ${isOver ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-200'} border rounded-lg transition-colors hover:border-blue-300"><div class="flex-grow font-medium ${isOver ? 'text-red-700' : 'text-slate-700'} text-sm leading-relaxed">${item}</div><div class="flex items-center gap-3 flex-shrink-0"><span class="text-xs font-semibold ${isOver ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-200'} px-2.5 py-1 rounded-md">${bLen} / ${maxBytes}</span><button onclick="copyToClip(this)" data-content="${encodeURIComponent(item)}" class="text-slate-400 hover:text-blue-600 transition-colors p-1.5"><i class="far fa-copy"></i></button></div></div>`;
+                return `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 ${isOver ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200'} border rounded-lg transition-colors hover:border-blue-300"><div class="flex-grow font-medium ${isOver ? 'text-red-700' : 'text-slate-700'} text-sm leading-relaxed">${item}</div><div class="flex items-center gap-3 flex-shrink-0"><span class="text-xs font-semibold ${isOver ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-100'} px-2.5 py-1 rounded-md">${bLen} / ${maxBytes}</span><button onclick="copyToClip(this)" data-content="${encodeURIComponent(item)}" class="text-slate-400 hover:text-blue-600 transition-colors p-1.5"><i class="far fa-copy text-lg"></i></button></div></div>`;
             }).join('');
         };
 
@@ -541,12 +536,49 @@
                 card.className = "bg-white border border-slate-200 rounded-xl shadow-sm mb-12 overflow-hidden hover:shadow-md transition-shadow";
 
                 if (mode === "ADS") {
-                    const keywords = detox(extract("ADS KEYWORDS"));
+                    // 💡 [防呆過濾器]：確保無論 AI 使用空白、逗號或分號，最終一律替換為標準頓號(、)
+                    let keywords = detox(extract("ADS KEYWORDS"));
+                    keywords = keywords.replace(/[\s,;、]+/g, '、').replace(/^、|、$/g, '');
+                    
                     const headlines = parseList(extract("ADS HEADLINES"));
                     const longHeadlines = parseList(extract("ADS LONG HEADLINES"));
                     const descriptions = parseList(extract("ADS DESCRIPTIONS"));
                     lastResultsData.push({ "Product Model": detox(model), "Target URL": url, "Ads Keywords": keywords, "Ads Headlines": headlines.join(' | '), "Ads Long Headlines": longHeadlines.join(' | '), "Ads Descriptions": descriptions.join(' | ') });
-                    card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fab fa-google"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'Google Ads RSA'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-md block">${url}</a></div></div></div><div class="p-6 space-y-8"><div><div class="flex justify-between items-center mb-3"><h5 class="text-xs font-bold text-slate-500 uppercase">BOF 關鍵字</h5><button onclick="copyToClip(this)" data-content="${encodeURIComponent(keywords)}" class="text-xs text-blue-600 font-semibold"><i class="far fa-copy"></i> 複製</button></div><div class="text-sm text-slate-700 p-4 bg-slate-50 border border-slate-100 rounded-lg">${keywords}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">廣告標題 (上限 30 Bytes)</h5><div class="space-y-2">${renderAdsItems(headlines, 30)}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">長標題 (上限 90 Bytes)</h5><div class="space-y-2">${renderAdsItems(longHeadlines, 90)}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">廣告描述 (上限 90 Bytes)</h5><div class="space-y-2">${renderAdsItems(descriptions, 90)}</div></div></div>`;
+                    
+                    card.innerHTML = `
+                        <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fab fa-google"></i></div>
+                                <div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'Google Ads RSA'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-md block">${url}</a></div>
+                            </div>
+                        </div>
+                        <div class="p-6 space-y-8">
+                            <div>
+                                <div class="flex justify-between items-center mb-3">
+                                    <h5 class="text-xs font-bold text-slate-500 uppercase">廣告關鍵字</h5>
+                                    <button onclick="copyToClip(this)" data-content="${encodeURIComponent(keywords)}" class="text-xs text-blue-600 font-semibold"><i class="far fa-copy"></i> 複製</button>
+                                </div>
+                                <div class="text-sm text-slate-700 p-4 bg-slate-50 border border-slate-100 rounded-lg">${keywords}</div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-3">
+                                    <h5 class="text-xs font-bold text-slate-500 uppercase">廣告標題 <span class="normal-case font-normal">(上限 30 Bytes)</span></h5>
+                                </div>
+                                <div class="space-y-2">${renderAdsItems(headlines, 30)}</div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-3">
+                                    <h5 class="text-xs font-bold text-slate-500 uppercase">長標題 <span class="normal-case font-normal">(上限 90 Bytes)</span></h5>
+                                </div>
+                                <div class="space-y-2">${renderAdsItems(longHeadlines, 90)}</div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-3">
+                                    <h5 class="text-xs font-bold text-slate-500 uppercase">廣告描述 <span class="normal-case font-normal">(上限 90 Bytes)</span></h5>
+                                </div>
+                                <div class="space-y-2">${renderAdsItems(descriptions, 90)}</div>
+                            </div>
+                        </div>`;
                 } else {
                     const titleClean = detox(extract("TITLE"));
                     const descClean = detox(extract("DESCRIPTION"));
@@ -556,8 +588,68 @@
                     const faqClean = detox(extract("FAQ"));
                     const titleByteLen = getByteLen(titleClean);
                     const descByteLen = getByteLen(descClean);
+                    
                     lastResultsData.push({ "Product Model": detox(model), "Target URL": url, "Optimized Title": titleClean, "Title Length": titleByteLen, "Meta Description": descClean, "Desc Length": descByteLen, "Suggested Tags": detox(tags), "Category": detox(cat), "GEO Features": featuresClean, "Expert FAQ": faqClean });
-                    card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-[#005bac]/10 text-[#005bac] flex items-center justify-center"><i class="fas fa-microchip"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'IPC Entry'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-[300px] md:max-w-md block">${url}</a></div></div><button onclick="copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button></div><div class="p-6 md:p-8 space-y-8"><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">SEO Title</span><span class="text-xs font-semibold ${titleByteLen > 60 ? 'text-red-600' : 'text-emerald-600'}">${titleByteLen} / 60 Bytes</span></div><div class="p-4 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-lg md:text-xl font-bold text-slate-800">${titleClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Meta Description</span><span class="text-xs font-semibold ${descByteLen > 160 ? 'text-red-600' : 'text-emerald-600'}">${descByteLen} / 160 Bytes</span></div><div class="p-4 bg-white border ${descByteLen > 160 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-sm md:text-base text-slate-600 leading-relaxed">${descClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="border border-slate-200 rounded-lg overflow-hidden"><div class="bg-slate-50 px-4 py-3 flex justify-between items-center cursor-pointer select-none" onclick="const content = this.nextElementSibling; content.classList.toggle('hidden'); const icon = this.querySelector('.toggle-icon'); icon.classList.toggle('rotate-180');"><div class="flex items-center gap-2"><i class="fas fa-list-ul text-slate-400"></i><span class="text-sm font-bold text-slate-700">GEO 特徵與價值鏈核對</span></div><i class="fas fa-chevron-down text-slate-400 transition-transform toggle-icon"></i></div><div class="hidden p-4 bg-white border-t border-slate-200"><p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">${featuresClean}</p></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Expert FAQ</span></div><div class="p-5 bg-slate-50 border border-slate-200 rounded-lg relative"><p class="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">${faqClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div></div><div class="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4"><div class="flex flex-col gap-1 text-sm"><p><span class="text-slate-500 font-semibold mr-2">${t.catLabel}</span> <span class="text-slate-800 font-medium">${detox(cat)}</span></p><p><span class="text-slate-500 font-semibold mr-2">${t.tagLabel}</span> <span class="text-slate-800 font-medium">${detox(tags)}</span></p></div><button onclick="copyToClip(this)" data-content="${encodeURIComponent('實體標籤: ' + detox(tags) + '\n分類: ' + detox(cat))}" class="text-xs bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"><i class="far fa-copy"></i> ${t.copyMeta}</button></div>`;
+                    
+                    // 💡 [修正重點]：將 UI 標題一字不漏地改為 Meta Title、Meta Description、SPEC、FAQ
+                    card.innerHTML = `
+                        <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded bg-[#005bac]/10 text-[#005bac] flex items-center justify-center"><i class="fas fa-microchip"></i></div>
+                                <div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'IPC Entry'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-[300px] md:max-w-md block">${url}</a></div>
+                            </div>
+                            <button onclick="copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button>
+                        </div>
+                        <div class="p-6 md:p-8 space-y-8">
+                            <div class="relative group">
+                                <div class="flex justify-between items-end mb-2">
+                                    <span class="text-xs font-bold text-slate-500 uppercase">Meta Title</span>
+                                    <span class="text-xs font-semibold ${titleByteLen > 60 ? 'text-red-600' : 'text-emerald-600'}">${titleByteLen} / 60 Bytes</span>
+                                </div>
+                                <div class="p-4 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative">
+                                    <p class="text-lg md:text-xl font-bold text-slate-800">${titleClean}</p>
+                                    <button onclick="copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="relative group">
+                                <div class="flex justify-between items-end mb-2">
+                                    <span class="text-xs font-bold text-slate-500 uppercase">Meta Description</span>
+                                    <span class="text-xs font-semibold ${descByteLen > 160 ? 'text-red-600' : 'text-emerald-600'}">${descByteLen} / 160 Bytes</span>
+                                </div>
+                                <div class="p-4 bg-white border ${descByteLen > 160 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative">
+                                    <p class="text-sm md:text-base text-slate-600 leading-relaxed">${descClean}</p>
+                                    <button onclick="copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="border border-slate-200 rounded-lg overflow-hidden">
+                                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center cursor-pointer select-none" onclick="const content = this.nextElementSibling; content.classList.toggle('hidden'); const icon = this.querySelector('.toggle-icon'); icon.classList.toggle('rotate-180');">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-list-ul text-slate-400"></i><span class="text-sm font-bold text-slate-700 uppercase">SPEC</span>
+                                    </div>
+                                    <i class="fas fa-chevron-down text-slate-400 transition-transform toggle-icon"></i>
+                                </div>
+                                <div class="hidden p-4 bg-white border-t border-slate-200">
+                                    <p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">${featuresClean}</p>
+                                </div>
+                            </div>
+                            <div class="relative group">
+                                <div class="flex justify-between items-end mb-2">
+                                    <span class="text-xs font-bold text-slate-500 uppercase">FAQ</span>
+                                </div>
+                                <div class="p-5 bg-slate-50 border border-slate-200 rounded-lg relative">
+                                    <p class="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">${faqClean}</p>
+                                    <button onclick="copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4">
+                            <div class="flex flex-col gap-1 text-sm">
+                                <p><span class="text-slate-500 font-semibold mr-2">${t.catLabel}</span> <span class="text-slate-800 font-medium">${detox(cat)}</span></p>
+                                <p><span class="text-slate-500 font-semibold mr-2">${t.tagLabel}</span> <span class="text-slate-800 font-medium">${detox(tags)}</span></p>
+                            </div>
+                            <button onclick="copyToClip(this)" data-content="${encodeURIComponent('實體標籤: ' + detox(tags) + '\n分類: ' + detox(cat))}" class="text-xs bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"><i class="far fa-copy"></i> ${t.copyMeta}</button>
+                        </div>
+                    `;
                 }
                 container.appendChild(card);
             });
@@ -573,7 +665,7 @@
             document.execCommand('copy');
             document.body.removeChild(el);
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-check text-emerald-500"></i> Copied';
+            btn.innerHTML = '<i class="fas fa-check text-emerald-600"></i> 已複製';
             setTimeout(() => btn.innerHTML = originalHTML, 2000);
         };
 
@@ -591,7 +683,7 @@
         window.onload = () => { updateUILanguage(); initializeCloud(); document.getElementById('file-input').addEventListener('change', updateFileDisplay); };
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Noto+Sans+TC:wght@400;500;600;700;900&display=swap');
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background-color: #f1f5f9; color: #334155; scroll-behavior: smooth; }
         .input-focus:focus { border-color: #005bac; box-shadow: 0 0 0 3px rgba(0, 91, 172, 0.1); outline: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -603,7 +695,7 @@
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
-                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.9 GitHub 修復版</p></div>
+                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.15 關鍵字分隔修正版</p></div>
             </div>
             <div class="flex items-center gap-4">
                 <button onclick="toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
