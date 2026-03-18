@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.11.7</title>
+    <title>GEO內容生成器 v1.11.8</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- 引入 PDF.js 核心庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -16,13 +15,15 @@
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'ipc-global-production-v1';
         
+        // 系統預設留空，通過 LocalStorage 讀取使用者設定的金鑰
         const apiKey = ""; 
+        let localApiKey = localStorage.getItem('ipc_gemini_apikey') || "";
 
         let isAuthReady = false;
         let isDataInitialLoaded = false;
@@ -34,7 +35,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.11.7 模型名稱校準版",
+                navVer: "v1.11.8 金鑰安全輸入版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -69,11 +70,18 @@
                 tagLabel: "實體標籤 (Entities):",
                 catLabel: "建議分類:",
                 copyMeta: "複製標籤",
-                confirmReset: "確定要清除知識庫嗎？"
+                confirmReset: "確定要清除知識庫嗎？",
+                btnApiKey: "設定金鑰",
+                modalApiTitle: "API 金鑰安全設定",
+                modalApiDesc: "請輸入您的 Google Gemini API 金鑰。金鑰將僅加密儲存於您的瀏覽器本地端，絕對不會上傳至任何外部伺服器，保障最高資安層級。",
+                modalApiPlaceholder: "在此貼上金鑰 (AIzaSy...)......",
+                modalApiSave: "儲存並啟用金鑰",
+                modalApiSuccess: "金鑰已成功儲存！",
+                modalApiAlert: "請先設定 API 金鑰才能生成內容！"
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.11.7 Model API Fixed",
+                navVer: "v1.11.8 API Key Secure Input",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -108,7 +116,14 @@
                 tagLabel: "Entity Tags:",
                 catLabel: "Category:",
                 copyMeta: "Copy Metadata",
-                confirmReset: "Clear knowledge base?"
+                confirmReset: "Clear knowledge base?",
+                btnApiKey: "API Key",
+                modalApiTitle: "API Key Settings",
+                modalApiDesc: "Enter your Google Gemini API key. It will be stored securely in your browser's local storage and never uploaded to external servers.",
+                modalApiPlaceholder: "Paste your key here (AIzaSy...)......",
+                modalApiSave: "Save & Enable Key",
+                modalApiSuccess: "Key saved successfully!",
+                modalApiAlert: "Please set your API Key first!"
             }
         };
 
@@ -131,7 +146,7 @@
             const t = i18n[currentLang];
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (el.tagName === 'TEXTAREA') el.placeholder = t[key];
+                if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.placeholder = t[key];
                 else el.innerText = t[key];
             });
             document.getElementById('current-level').options[0].text = t.levelPDP;
@@ -155,6 +170,32 @@
         window.toggleLanguage = () => {
             currentLang = currentLang === 'zh' ? 'en' : 'zh';
             updateUILanguage();
+        };
+
+        // API Key Modal Logic
+        window.toggleApiModal = () => {
+            const modal = document.getElementById('api-modal');
+            const content = document.getElementById('api-modal-content');
+            if (modal.classList.contains('hidden')) {
+                document.getElementById('api-key-input').value = localApiKey;
+                modal.classList.remove('hidden');
+                setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); }, 10);
+            } else {
+                modal.classList.add('opacity-0');
+                content.classList.add('scale-95');
+                setTimeout(() => { modal.classList.add('hidden'); 
+                    document.getElementById('api-modal-desc').innerHTML = i18n[currentLang].modalApiDesc;
+                }, 300);
+            }
+        };
+
+        window.saveApiKey = () => {
+            const input = document.getElementById('api-key-input').value.trim();
+            localApiKey = input;
+            localStorage.setItem('ipc_gemini_apikey', localApiKey);
+            const status = document.getElementById('api-save-status');
+            status.classList.remove('opacity-0');
+            setTimeout(() => { status.classList.add('opacity-0'); toggleApiModal(); }, 1500);
         };
 
         const updateFileDisplay = () => {
@@ -308,6 +349,13 @@
         }
 
         async function executeOptimization() {
+            // 安全防護：檢查金鑰是否存在
+            if (!localApiKey) {
+                document.getElementById('api-modal-desc').innerHTML = `<span class="text-red-500 font-bold"><i class="fas fa-exclamation-triangle"></i> ${i18n[currentLang].modalApiAlert}</span><br><br>${i18n[currentLang].modalApiDesc}`;
+                toggleApiModal();
+                return;
+            }
+
             const btn = document.getElementById('submit-btn');
             const outputContainer = document.getElementById('output-container');
             const resultArea = document.getElementById('result-area');
@@ -419,8 +467,8 @@
                     tools: [{ "google_search": {} }]
                 };
 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-                // 導入重試機制取代原有的單次 fetch
+                // 改由動態注入使用者在介面設定的本地金鑰，並直接呼叫正式版 flash 模型
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${localApiKey}`;
                 const responseData = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 
                 const outputText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -428,7 +476,7 @@
                 renderCards(outputText, currentEngineMode);
             } catch (e) {
                 // 真實錯誤解碼顯示
-                outputContainer.innerHTML = `<div class="p-8 border border-red-200 bg-red-50 rounded-xl max-w-2xl mx-auto flex items-start gap-4"><i class="fas fa-exclamation-circle text-2xl text-red-500 mt-1"></i><div><h4 class="font-bold text-red-800 text-lg mb-2">生成失敗</h4><p class="text-sm text-red-600 font-mono break-all">${e.message}</p></div></div>`;
+                outputContainer.innerHTML = `<div class="p-8 border border-red-200 bg-red-50 rounded-xl max-w-2xl mx-auto flex items-start gap-4"><i class="fas fa-exclamation-circle text-2xl text-red-500 mt-1"></i><div><h4 class="font-bold text-red-800 text-lg mb-2">生成失敗</h4><p class="text-sm text-red-600 font-mono break-all">${e.message}</p><p class="text-xs text-red-500 mt-3 font-semibold">*若出現 400 錯誤，請點擊右上方「設定金鑰」檢查您的 API 金鑰是否輸入正確。</p></div></div>`;
             } finally {
                 btn.disabled = false;
                 btn.classList.remove('opacity-75', 'cursor-not-allowed');
@@ -487,8 +535,6 @@
                     const titleByteLen = getByteLen(titleClean);
                     const descByteLen = getByteLen(descClean);
                     lastResultsData.push({ "Product Model": detox(model), "Target URL": url, "Optimized Title": titleClean, "Title Length": titleByteLen, "Meta Description": descClean, "Desc Length": descByteLen, "Suggested Tags": detox(tags), "Category": detox(cat), "GEO Features": featuresClean, "Expert FAQ": faqClean });
-                    
-                    // 已徹底移除此處 JSON-LD 的黑底渲染區塊
                     card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-[#005bac]/10 text-[#005bac] flex items-center justify-center"><i class="fas fa-microchip"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model) || 'IPC Entry'}</h4><a href="${url}" target="_blank" class="text-xs text-slate-500 hover:text-blue-600 truncate max-w-[300px] md:max-w-md block">${url}</a></div></div><button onclick="copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button></div><div class="p-6 md:p-8 space-y-8"><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">SEO Title</span><span class="text-xs font-semibold ${titleByteLen > 60 ? 'text-red-600' : 'text-emerald-600'}">${titleByteLen} / 60 Bytes</span></div><div class="p-4 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-lg md:text-xl font-bold text-slate-800">${titleClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Meta Description</span><span class="text-xs font-semibold ${descByteLen > 160 ? 'text-red-600' : 'text-emerald-600'}">${descByteLen} / 160 Bytes</span></div><div class="p-4 bg-white border ${descByteLen > 160 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac] relative"><p class="text-sm md:text-base text-slate-600 leading-relaxed">${descClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div><div class="border border-slate-200 rounded-lg overflow-hidden"><div class="bg-slate-50 px-4 py-3 flex justify-between items-center cursor-pointer select-none" onclick="const content = this.nextElementSibling; content.classList.toggle('hidden'); const icon = this.querySelector('.toggle-icon'); icon.classList.toggle('rotate-180');"><div class="flex items-center gap-2"><i class="fas fa-list-ul text-slate-400"></i><span class="text-sm font-bold text-slate-700">GEO 特徵與價值鏈核對</span></div><i class="fas fa-chevron-down text-slate-400 transition-transform toggle-icon"></i></div><div class="hidden p-4 bg-white border-t border-slate-200"><p class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">${featuresClean}</p></div></div><div class="relative group"><div class="flex justify-between items-end mb-2"><span class="text-xs font-bold text-slate-500 uppercase">Expert FAQ</span></div><div class="p-5 bg-slate-50 border border-slate-200 rounded-lg relative"><p class="text-sm md:text-base text-slate-700 leading-relaxed whitespace-pre-wrap">${faqClean}</p><button onclick="copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"><i class="far fa-copy"></i></button></div></div></div><div class="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4"><div class="flex flex-col gap-1 text-sm"><p><span class="text-slate-500 font-semibold mr-2">${t.catLabel}</span> <span class="text-slate-800 font-medium">${detox(cat)}</span></p><p><span class="text-slate-500 font-semibold mr-2">${t.tagLabel}</span> <span class="text-slate-800 font-medium">${detox(tags)}</span></p></div><button onclick="copyToClip(this)" data-content="${encodeURIComponent('實體標籤: ' + detox(tags) + '\n分類: ' + detox(cat))}" class="text-xs bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded shadow-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"><i class="far fa-copy"></i> ${t.copyMeta}</button></div>`;
                 }
                 container.appendChild(card);
@@ -535,10 +581,15 @@
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
-                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.7 模型名稱校準版</p></div>
+                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.8 金鑰安全輸入版</p></div>
             </div>
             <div class="flex items-center gap-4">
-                <button onclick="toggleLanguage()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2"><i class="fas fa-globe"></i> 中 / EN</button>
+                <button onclick="toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
+                    <i class="fas fa-key text-yellow-500"></i> <span data-i18n="btnApiKey">設定金鑰</span>
+                </button>
+                <button onclick="toggleLanguage()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
+                    <i class="fas fa-globe"></i> 中 / EN
+                </button>
                 <div id="auth-status" class="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-full flex items-center shadow-inner transition-colors duration-500"><i class="fas fa-circle-notch fa-spin mr-2"></i> Connecting...</div>
             </div>
         </div>
@@ -579,5 +630,23 @@
             <div id="output-container" class="space-y-8"></div>
         </section>
     </main>
+
+    <!-- API Key 設定彈窗 (安全隱藏於前端) -->
+    <div id="api-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center transition-opacity opacity-0">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-300" id="api-modal-content">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-shield-alt text-[#005bac]"></i> <span data-i18n="modalApiTitle">API 金鑰安全設定</span></h3>
+                <button onclick="toggleApiModal()" class="text-slate-400 hover:text-slate-600 transition-colors p-1"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <p id="api-modal-desc" class="text-xs text-slate-500 mb-6 font-medium leading-relaxed" data-i18n="modalApiDesc">請輸入您的 Google Gemini API 金鑰。金鑰將僅加密儲存於您的瀏覽器本地端，絕對不會上傳至任何外部伺服器，保障最高資安層級。</p>
+            <div class="space-y-4">
+                <input type="password" id="api-key-input" data-i18n="modalApiPlaceholder" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-700 focus:border-[#005bac] focus:bg-white outline-none transition-colors" placeholder="在此貼上金鑰 (AIzaSy...)......">
+                <button onclick="saveApiKey()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2"><i class="fas fa-save"></i> <span data-i18n="modalApiSave">儲存並啟用金鑰</span></button>
+            </div>
+            <div class="mt-4 text-center h-4">
+                <span id="api-save-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity flex items-center justify-center gap-1"><i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">金鑰已成功儲存！</span></span>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
