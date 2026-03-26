@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.11.35 專業廣告與層級適配版</title>
+    <title>GEO內容生成器 v1.12.5 穩定基準版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -47,7 +47,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.11.35 專業廣告與層級適配版",
+                navVer: "v1.12.5 穩定基準版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -73,6 +73,7 @@
                 strategyKeyword: "採購意圖優先 (報價/供應商)",
                 strategyBrand: "品牌權威優先 (原廠/現貨)",
                 btnSubmit: "執行 AI 內容生成",
+                processing: "處理中...",
                 resTitle: "優化產出結果",
                 btnExport: "匯出 Excel",
                 procTitle: "GEO Engine Active...",
@@ -93,7 +94,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.11.35 Pro Ads & Level Sync",
+                navVer: "v1.12.5 Stable Baseline",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -119,6 +120,7 @@
                 strategyKeyword: "Sales Intent (Quote/Price)",
                 strategyBrand: "Brand Authority (Official)",
                 btnSubmit: "Execute AI Generation",
+                processing: "Processing...",
                 resTitle: "Optimization Results",
                 btnExport: "Export Excel",
                 procTitle: "GEO Engine Active...",
@@ -173,7 +175,7 @@
             geoSelect.options[1].text = "Gemini AI";
             geoSelect.options[2].text = "ChatGPT";
             geoSelect.options[3].text = "Perplexity";
-            geoSelect.options[4].text = "Google Ads (RSA 廣告素材)";
+            geoSelect.options[4].text = "Google Ads";
             document.getElementById('submit-btn-text').innerText = t.btnSubmit;
             if(document.getElementById('export-btn-text')) document.getElementById('export-btn-text').innerText = t.btnExport;
             renderAuthStatus();
@@ -356,9 +358,10 @@
 
         async function executeOptimization() {
             const activeKey = localApiKey || apiKey;
+            const t = i18n[currentLang];
             if (!activeKey) {
                 const desc = document.getElementById('api-modal-desc');
-                if(desc) desc.innerHTML = `<span class="text-red-500 font-bold"><i class="fas fa-exclamation-triangle"></i> ${i18n[currentLang].modalApiAlert}</span><br><br>${i18n[currentLang].modalApiDesc}`;
+                if(desc) desc.innerHTML = `<span class="text-red-500 font-bold"><i class="fas fa-exclamation-triangle"></i> ${t.modalApiAlert}</span><br><br>${t.modalApiDesc}`;
                 window.toggleApiModal();
                 return;
             }
@@ -375,13 +378,13 @@
 
             if (!targetUrls.trim() && fileInput.files.length === 0) return;
             btn.disabled = true;
-            document.getElementById('submit-btn-text').innerText = "處理中...";
+            document.getElementById('submit-btn-text').innerText = t.processing;
             btn.classList.add('opacity-75', 'cursor-not-allowed');
             resultArea.classList.remove('hidden');
             resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-            currentEngineMode = geo === "Google Ads (RSA 廣告素材)" ? "ADS" : "GEO";
-            const t = i18n[currentLang];
+            currentEngineMode = geo.includes("Google Ads") ? "ADS" : "GEO";
+            
             outputContainer.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-20 text-[#005bac]">
                     <i class="fas fa-circle-notch fa-spin text-5xl mb-6 opacity-80"></i>
@@ -394,49 +397,67 @@
                 try { extractedFileText = await extractTextFromFile(fileInput.files[0]); } catch (e) { extractedFileText = "[File parsing failed]"; }
             }
 
-            const targetLangLabel = currentLang === 'zh' ? 'Traditional Chinese (繁體中文)' : 'English';
-            const brandName = currentLang === 'zh' ? '研華' : 'Advantech';
+            const isZh = currentLang === 'zh';
+            const targetLangLabel = isZh ? 'Traditional Chinese (繁體中文)' : 'English';
+            const brandName = isZh ? '研華' : 'Advantech';
             
-            // 🚨 FIX: 導入動態頁面層級指令 (PLP vs PDP vs Home) 及 SPEC 強制隱藏邏輯
+            const adHeadLen = isZh ? '13-15 Trad. Chinese characters (26-30 Bytes)' : '25-30 characters';
+            const adDescLen = isZh ? '40-45 Trad. Chinese characters (80-90 Bytes)' : '80-90 characters';
+            const titleLen = isZh ? 'STRICTLY 50-60 Bytes (approx 25-30 Trad. Chinese characters). DO NOT output short titles under 40 Bytes.' : 'STRICTLY 50-60 characters. DO NOT output short titles.';
+            const descLen = isZh ? 'UNDER 75 Trad. Chinese characters (Max 150 Bytes). Aim for 65-70.' : 'UNDER 150 characters. Aim for 130-140.';
+            const grammarRule = isZh ? 'NATIVE CHINESE GRAMMAR' : 'NATIVE ENGLISH GRAMMAR';
+            
+            const catNameEx = isZh ? "'無風扇邊緣運算系統'" : "'Compact Fanless Computer'";
+            const ctaWords = isZh ? "CTA Power Words (e.g., '立即聯繫專家評估', '索取專屬報價')" : "CTA Power Words (e.g., 'Contact an Expert', 'Request a Quote')";
+
             let pageLevelInstruction = "";
             let featureInstruction = "";
+            let rsaLevelInstruction = ""; 
             
             if (level === "Category") {
-                pageLevelInstruction = `🚨 PAGE LEVEL (PLP): This is a Product Line Page (Category). DO NOT extract or focus on a single product series (e.g., DO NOT pick just 'UNO' or 'ARK' if the page lists multiple). You MUST extract the BROAD CATEGORY NAME (e.g., 'Compact Fanless Computer', '無風扇邊緣運算系統') for the [MODEL] field. Optimize for the entire product line's overarching benefits.`;
+                pageLevelInstruction = `🚨 PAGE LEVEL (PLP): This is a Product Line Page (Category). DO NOT extract or focus on a single product series (e.g., DO NOT pick just 'UNO' or 'ARK' if the page lists multiple). You MUST extract the BROAD CATEGORY NAME (e.g., ${catNameEx}) for the [MODEL] field. Optimize for the entire product line's overarching benefits.`;
                 featureInstruction = `- **[GEO FEATURES]**: PLP pages do NOT need specific hardware specs. YOU MUST OUTPUT exactly: "N/A" for this section.`;
+                rsaLevelInstruction = `🚨 RSA PAGE LEVEL (PLP): Optimize for the ENTIRE SERIES. Replace specific model names with the Series/Category name. Focus headlines on overarching solutions and series-wide benefits instead of single-machine specs.`;
             } else if (level === "Home") {
                 pageLevelInstruction = `🚨 PAGE LEVEL (HOME): This is a Corporate Home Page. DO NOT output specific hardware specs. Extract the Brand Name (e.g., '${brandName}') for the [MODEL] field. Optimize for overarching brand authority, global service, and enterprise IoT solutions.`;
                 featureInstruction = `- **[GEO FEATURES]**: Home pages do NOT need hardware specs. YOU MUST OUTPUT exactly: "N/A" for this section.`;
+                rsaLevelInstruction = `🚨 RSA PAGE LEVEL (HOME): Optimize for BRAND AUTHORITY. NEVER use specific hardware models or specs. Focus ALL headlines on global leadership, IoT ecosystem, enterprise trust, and global service capabilities.`;
             } else {
                 pageLevelInstruction = `🚨 PAGE LEVEL (PDP): This is a Product Detail Page. Focus strictly on the exact single hardware model and its specific technical parameters.`;
-                featureInstruction = `- **[GEO FEATURES]**: Exactly 5 factual bullet points starting with '- ' highlighting the strongest hardware specifications.`;
+                featureInstruction = `- **[GEO FEATURES]**: Exactly 8 factual bullet points starting with '- '. NO hallucination.
+                   - **Sentence Structure (Apply strictly to both EN & ZH)**: [Verb] + [descriptor(optional)] + [key specs] + [for/with/supporting/ensuring/enabling/in] + [purpose/benefit]. (e.g., 支援 -40~85°C 寬溫運作，確保極端工業環境下的系統穩定性 / Supports -40~85°C wide operating temp, ensuring system stability in harsh environments).
+                   - **GEO Category Focus**: Analyze the product category first. Highlight the most critical specs for that specific category (e.g., for IPCs, prioritize CPU, GPU, RAM, Storage).
+                   - **Industrial Differentiation**: You MUST heavily emphasize industrial-grade specs (e.g., Wide temp 寬溫, Anti-shock 耐震, Wall-mount 壁掛, Dust-proof 防塵, Long-distance 傳輸) to clearly differentiate from commercial consumer products.`;
+                rsaLevelInstruction = `🚨 RSA PAGE LEVEL (PDP): Optimize for a SINGLE SPECIFIC MODEL. Headlines MUST highlight exact technical parameters, verified specs with numbers, and direct purchase intent for this model.`;
             }
 
             let systemPrompt = "";
 
             if (currentEngineMode === "ADS") {
-                // 🚨 FIX: Ads Professional Keyword & Headline Mix, and Strict Policy
                 systemPrompt = `You are an elite Google Ads Media Buyer for the IPC sector.
                 **OUTPUT LANGUAGE**: MUST be **${targetLangLabel}**.
                 ${pageLevelInstruction}
+                ${rsaLevelInstruction}
                 
-                **STRICT Google Ads RSA RULES**:
-                1. NO MARKDOWN (except for bullet points).
-                2. **[ADS KEYWORDS]**: Exactly 15 lines. 🚨 CREATE A PROFESSIONAL KEYWORD PLAN. DO NOT just repeat the model name 15 times with a single word. Create a diverse mix of High-Intent Exact & Phrase matches covering: 
-                   - Brand + Category (e.g., 研華 無風扇工控機)
-                   - Category + Intent (e.g., 邊緣運算電腦 報價)
-                   - Model + Solution (e.g., ARK-1124H 智慧製造)
+                **STRICT Google Ads RULES**:
+                1. NO MARKDOWN (except for bullet points). ENSURE ${grammarRule}.
+                2. **[ADS KEYWORDS]**: Exactly 20 lines. 🚨 KEYWORD FUNNEL MIX (3:4:3 Ratio):
+                   - 6x Head Terms (Broad category to capture traffic, e.g., 'Fanless IPC', 'Edge Computer')
+                   - 8x Solution Terms (Pain points/Applications, e.g., 'Smart Factory Edge Computing', 'Harsh Environment PC')
+                   - 6x BOF Long-tail Terms (Purchase intent/Exact model, e.g., 'ARK-1124H Quote', '${brandName} IPC Supplier')
                    Each line MUST start with "- ".
-                3. **[ADS HEADLINES]**: Exactly 15 headlines (26-30 Bytes each). 🚨 CREATE A BALANCED RSA MIX:
-                   - 3x Brand/Model names (e.g., 研華 MIC-732-AO6A1)
-                   - 6x Core Benefits/Solutions (e.g., 強固型無風扇邊緣運算)
-                   - 6x Verified Specs WITH numerical values (e.g., 搭載 8GB LPDDR4x 記憶體) -> NEVER output units alone like 'GB DDR3L'. If no value is found, write a feature instead (e.g., 極致精巧無風扇設計).
-                4. **[ADS LONG HEADLINES] & [ADS DESCRIPTIONS]**: 5 each. 40-45 Trad. Chinese characters (80-90 Bytes). Maximize space with compelling copy and CTAs.
+                3. **[ADS HEADLINES]**: Exactly 15 short headlines. LENGTH MUST BE ${adHeadLen}. 🚨 ROLE: Designed to be COMBINED by Google (e.g., Headline 1 | Headline 2). Make them punchy.
+                   Mix: 3x Brand/Subject, 6x Core Benefits, 6x Verified Specs/Features.
+                4. **[ADS LONG HEADLINES]**: Exactly 5 lines. LENGTH MUST BE ${adDescLen}. 
+                   🚨 CRITICAL ROLE: Each line stands ALONE as a massive billboard. 
+                   🚨 IDENTITY LOCK: Therefore, EVERY SINGLE line MUST explicitly start with the Brand and Product/Series name (e.g., "${brandName} [Model/Series]...").
+                   🚨 READABILITY: You MUST use full-width commas (，) to separate clauses and add spaces between English and Chinese words to prevent visual suffocation. 
+                   🚨 FINAL RULE: Do NOT use periods at the end.
+                5. **[ADS DESCRIPTIONS]**: Exactly 5 lines. LENGTH MUST BE ${adDescLen}. 🚨 ROLE: Appears below headlines. MUST be complete sentences elaborating on benefits and MUST end with a strong Call-To-Action (CTA) (e.g., '立即聯繫專家評估', 'Request a quote today').
                 
                 🚨 GOOGLE ADS EDITORIAL POLICY (CRITICAL) 🚨:
                 - STRICTLY NO EXCLAMATION MARKS (! or ！) in any headlines, long headlines, or descriptions. DO NOT USE THEM.
                 - NO unorthodox punctuation (e.g., @, >, emojis, ???).
-                - NO excessive capitalization.
                 - NO clickbait CTA like 'Click here'.
                 
                 🚨 **CRITICAL ANTI-HALLUCINATION & ZERO UNIT CORPSES** 🚨
@@ -462,24 +483,52 @@
                 ...
                 `;
             } else {
-                let strategyInstruction = "";
-                if (strategy === "keyword_first") {
-                    strategyInstruction = `🚨 SALES INTENT MODE: Naturally weave ONE commercial word (價格, 報價, or 供應商) into the Title. \nFORMAT EXAMPLE: "ARK-11-S1A5 價格與供應商：無風扇邊緣運算機 | ${brandName}". \nENSURE NATIVE CHINESE GRAMMAR. DO NOT just prepend the word abruptly.`;
-                } else if (strategy === "brand_first") {
-                    strategyInstruction = `🚨 AUTHORITY MODE: Naturally weave ONE trust word (原廠直營 or 現貨供應). \nFORMAT EXAMPLE: "${brandName} ARK-11-S1A5 原廠直營：強固型無風扇工控機". \nENSURE NATIVE CHINESE GRAMMAR. MUST start strictly with ${brandName}.`;
-                } else {
-                    strategyInstruction = `🚨 USP MODE: Focus strictly on Technical USP. \nFORMAT EXAMPLE: "ARK-11-S1A5 Intel N3350 極致精巧無風扇工控機 | ${brandName}".`;
+                let effectiveStrategy = strategy;
+                if (level === "Home") {
+                    effectiveStrategy = "brand_first"; 
                 }
+
+                let strategyInstruction = "";
+                if (effectiveStrategy === "keyword_first") {
+                    strategyInstruction = `🚨 SALES INTENT MODE (BOF / Action-Driven):
+                    - **Formula**: [Model/Series] [Dynamic Intent Word]: [Core USP] - [Secondary Benefit/Scenario] | ${brandName}
+                    - **Dynamic Intent Word**: Choose a professional B2B action word fitting the product (e.g., 採購評估, 價格與供應商, 導入方案, 規格解析).
+                    - **Example (PDP)**: ARK-11-S1A5 採購評估：強固無風扇工控機 - 賦能智慧製造 | ${brandName}
+                    - **Example (PLP)**: UNO 系列導入方案：工業物聯網邊緣閘道器 - 支援嚴苛環境 | ${brandName}`;
+                } else if (effectiveStrategy === "brand_first") {
+                    strategyInstruction = `🚨 BRAND AUTHORITY MODE (Defensive/Trust):
+                    - **Formula**: ${brandName} [Dynamic Authority Word]：[Model/Series] [Core Category] - [Secondary Benefit/Scenario]
+                    - **Dynamic Authority Word**: Choose a trust-building word (e.g., 原廠官方, 全球領導品牌, 專業級解決方案).
+                    - **Example**: ${brandName} 官方解決方案：ARK-11 系列無風扇工控機 - 確保極端環境穩定運作`;
+                } else {
+                    strategyInstruction = `🚨 BALANCED USP MODE (Technical Focus):
+                    - **Formula**: [Model/Series] [Strongest Single USP] - [Core Category] - [Secondary Benefit/Scenario] | ${brandName}
+                    - **Example**: ARK-11-S1A5 極致精巧無風扇設計 - 工業邊緣運算機 - 最佳化設備聯網 | ${brandName}`;
+                }
+                
+                strategyInstruction += `\n🚨 **TITLE ABSOLUTE RULES**: 
+                1. MUST STRICTLY follow the formula structure above. 
+                2. **MAXIMIZE SERP SPACE (CRITICAL)**: You MUST add a "[Secondary Benefit/Scenario]" (e.g., - 賦能工廠自動化轉型) to stretch the title length to the 50-60 Bytes target. DO NOT leave the title too short.
+                3. **BRAND DEDUPLICATION (CRITICAL)**: The brand name "${brandName}" MUST appear EXACTLY ONCE in the title. NEVER write "${brandName} ... | ${brandName}". 
+                4. ENSURE ${grammarRule}.`;
 
                 let engineInstruction = "";
                 if (geo === "Gemini") {
-                    engineInstruction = "**ENGINE TARGET (Gemini)**: Optimize for Google AI Overviews (SGE). You MUST use a highly structured, definitional, and factual tone to maximize top-snippet citations.";
+                    engineInstruction = `**ENGINE TARGET (Gemini)**: Optimize for Google AI Overviews (SGE). You MUST use a highly structured, definitional tone.
+                    - **Desc Hook**: MUST start with an authoritative definition (e.g., "[MODEL] 是一款專為 [Industry] 設計的...").
+                    - **FAQ Strategy**: MUST ask highly structured, factual contrast questions focusing on standard compliance or architectural differences (e.g., "How does this architecture meet specific industrial standards compared to legacy systems?").`;
                 } else if (geo === "ChatGPT") {
-                    engineInstruction = "**ENGINE TARGET (ChatGPT)**: Focus heavily on 'Solutions' and 'Pain Points'. Lower hardware parameter density. Use a consultative, reasoning-friendly tone.";
+                    engineInstruction = `**ENGINE TARGET (ChatGPT)**: Focus heavily on conversational 'Solutions' and 'Pain Points'.
+                    - **Desc Hook**: MUST start with a pain-point question tailored to the Page Level (e.g., "面臨極端高溫挑戰？" or "Looking for reliable edge computing?").
+                    - **FAQ Strategy**: MUST ask scenario-based, consultative questions from a user's perspective (e.g., "If my factory has high dust and vibration, how does this fanless design ensure stability?").`;
                 } else if (geo === "Perplexity") {
-                    engineInstruction = "**ENGINE TARGET (Perplexity)**: Maximize Data Density. You MUST aggressively highlight exact numerical values, IP ratings, and military-grade certification codes in the description.";
+                    engineInstruction = `**ENGINE TARGET (Perplexity)**: Maximize Data Density for deep-dive retrieval.
+                    - **Desc Hook**: MUST start directly with critical specs, IP ratings, or military-grade certifications (e.g., "具備 IP67 與 MIL-STD-810G 認證，支援 -40°C 寬溫的...").
+                    - **FAQ Strategy**: MUST ask hardcore engineering metric comparisons (e.g., comparing MTBF, specific thermal dissipation limits, or I/O throughput under load).`;
                 } else {
-                    engineInstruction = "**ENGINE TARGET (Standard SEO)**: Maximize CTR. You MUST inject CTA Power Words (e.g., '立即聯繫專家評估', '索取專屬報價') at the END of the Meta Description.";
+                    engineInstruction = `**ENGINE TARGET (Standard SEO)**: Maximize CTR.
+                    - **Desc Hook**: Benefit-driven opening. You MUST inject ${ctaWords} at the END of the Meta Description.
+                    - **FAQ Strategy**: Standard technical and commercial contrast questions.`;
                 }
 
                 systemPrompt = `You are a professional IPC marketing expert.
@@ -488,23 +537,22 @@
 
                 **TITLE STRUCTURE**:
                 ${strategyInstruction}
-                🚨 MANDATORY: Title must be under 60 Bytes (30 Chinese chars).
                 
                 **CHARACTER LIMITS**:
-                - **TITLE**: UNDER 30 Trad. Chinese characters (Max 60 Bytes).
-                - **DESCRIPTION**: UNDER 80 Trad. Chinese characters (Max 160 Bytes). Aim for 70-75.
+                - **TITLE**: ${titleLen}.
+                - **DESCRIPTION**: ${descLen}.
                 
                 ${engineInstruction}
                 
                 **ADVANCED GEO STRATEGIES**:
-                - **[FAQ]**: Exactly 3 Q&A pairs with SEMANTIC CONTRAST. NO basic spec questions. MUST ask reasoning questions (e.g., comparing architectures, or solving extreme environment pain points).
+                - **[FAQ]**: Exactly 3 Q&A pairs with SEMANTIC CONTRAST based on the Engine Strategy above. NO basic spec questions (like "What is the CPU?").
                 ${featureInstruction}
                 - **[TAGS]**: 3-6 specific entity keywords (Specs, Features, Scenarios).
                 - **[CATEGORY]**: 1-2 broad product classification (e.g., Industrial IoT Gateway).
                 
                 🚨 **CRITICAL ANTI-HALLUCINATION (VERIFIED FACTS ONLY)** 🚨
                 - Reject specs from different models in snippets.
-                - VERIFIED FOCUS: If a specific hardware spec (like CPU or RAM) is NOT explicitly found in the provided sources, DO NOT guess from memory. Omit it and construct your Title, Description, and FAQ using ONLY confirmed features.
+                - VERIFIED FOCUS: If a specific hardware spec is NOT explicitly found in the provided sources, DO NOT guess from memory. Omit it and construct your Title, Description, and FAQ using ONLY confirmed features.
                 
                 **MANDATORY FORMAT**:
                 ### [URL_START] {Target}
@@ -566,6 +614,8 @@
             const container = document.getElementById('output-container');
             container.innerHTML = "";
             const t = i18n[currentLang];
+            const isZh = currentLang === 'zh';
+            
             const segments = text.split(/###\s*\[?URL_START\]?/gi).filter(s => s.trim() !== "");
             lastResultsData = []; 
             segments.forEach(seg => {
@@ -579,15 +629,58 @@
                 };
                 const model = extract("MODEL");
                 const card = document.createElement('div');
-                card.className = "bg-white border border-slate-200 rounded-xl shadow-sm mb-12 overflow-hidden hover:shadow-md transition-shadow";
+                card.className = "bg-white border border-slate-200 rounded-xl shadow-sm mb-12 overflow-hidden hover:shadow-md transition-shadow flex flex-col";
                 
                 if (mode === "ADS") {
-                    let keywords = detox(extract("ADS KEYWORDS"));
+                    let keywordsRaw = extract("ADS KEYWORDS");
+                    let keywords = keywordsRaw.includes(',') ? keywordsRaw : parseList(keywordsRaw).join(', ');
+                    
                     const headlines = parseList(extract("ADS HEADLINES"));
                     const longHeadlines = parseList(extract("ADS LONG HEADLINES"));
                     const descriptions = parseList(extract("ADS DESCRIPTIONS"));
-                    lastResultsData.push({ "Model": detox(model), "URL": url, "Keywords": keywords, "Headlines": headlines.join(' | '), "LongHeadlines": longHeadlines.join(' | '), "Desc": descriptions.join(' | ') });
-                    card.innerHTML = `<div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold"><i class="fab fa-google"></i></div><div><h4 class="font-bold text-slate-800 text-sm">${detox(model)}</h4><p class="text-xs text-slate-500 truncate max-w-md">${url}</p></div></div></div><div class="p-6 space-y-8"><div><div class="flex justify-between items-center mb-2"><h5 class="text-xs font-bold text-slate-500 uppercase">廣告關鍵字 (BOF 長尾結合)</h5><button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(keywords)}" class="text-xs text-blue-600 font-semibold">複製</button></div><div class="text-sm text-slate-700 p-4 bg-slate-50 border border-slate-100 rounded-lg whitespace-pre-wrap">${keywords}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">廣告標題 (規格 + 數值鎖定)</h5><div class="space-y-2">${renderAdsItems(headlines, 30)}</div></div><div><h5 class="text-xs font-bold text-slate-500 uppercase mb-3">長標題與描述</h5><div class="space-y-2">${renderAdsItems(longHeadlines, 90)}${renderAdsItems(descriptions, 90)}</div></div></div>`;
+
+                    lastResultsData.push({
+                        "Product Model": detox(model), "Target URL": url, "Ads Keywords": detox(keywords),
+                        "Ads Headlines": headlines.join(' | '), "Ads Long Headlines": longHeadlines.join(' | '), "Ads Descriptions": descriptions.join(' | ')
+                    });
+
+                    card.innerHTML = `
+                        <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-10 py-6 flex justify-between items-center shadow-inner">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.3)</span>
+                                <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
+                            </div>
+                        </div>
+                        <div class="p-8 sm:p-12 space-y-12 flex-grow">
+                            <div>
+                                <div class="flex justify-between items-center mb-4">
+                                    <span class="text-[11px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm"><i class="fas fa-key mr-2"></i>廣告關鍵字矩陣 (20組：大詞 + 應用 + 長尾)</span>
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(detox(keywords))}" class="text-[11px] text-emerald-500 font-bold underline decoration-2 underline-offset-8">整批複製</button>
+                                </div>
+                                <div class="text-sm leading-relaxed text-slate-600 font-medium p-6 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">${detox(keywords)}</div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-4">
+                                    <span class="text-[11px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm"><i class="fas fa-heading mr-2"></i>短標題 (上限 30 Bytes / 組合顯示)</span>
+                                </div>
+                                <div class="space-y-3">${renderAdsItems(headlines, 30)}</div>
+                            </div>
+                            
+                            <div class="border-t border-slate-100 pt-8">
+                                <div class="flex justify-between items-center mb-4">
+                                    <span class="text-[11px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm"><i class="fas fa-align-left mr-2"></i>長標題 (上限 90 Bytes / 具備斷句之獨立看版)</span>
+                                </div>
+                                <div class="space-y-3">${renderAdsItems(longHeadlines, 90)}</div>
+                            </div>
+                            
+                            <div class="border-t border-slate-100 pt-8">
+                                <div class="flex justify-between items-center mb-4">
+                                    <span class="text-[11px] font-black text-purple-600 uppercase tracking-widest bg-purple-50 px-4 py-2 rounded-xl border border-purple-100 shadow-sm"><i class="fas fa-list-alt mr-2"></i>廣告描述 (上限 90 Bytes / 完整敘述含 CTA)</span>
+                                </div>
+                                <div class="space-y-3">${renderAdsItems(descriptions, 90)}</div>
+                            </div>
+                        </div>
+                    `;
                 } else {
                     const titleClean = detox(extract("TITLE"));
                     const descClean = detox(extract("DESCRIPTION"));
@@ -599,17 +692,21 @@
                     const descByteLen = getByteLen(descClean);
                     const featuresListArray = parseList(featuresClean);
                     
-                    // 🚨 FIX 3: 動態隱藏 SPEC (GEO FEATURES) 區塊，若內容為 N/A (PLP / Home 層級)
                     let specHtmlBlock = "";
+                    let featuresTextToCopy = "";
                     if (featuresClean && featuresClean.toUpperCase() !== "N/A" && featuresListArray.length > 0) {
-                        const featuresHtml = `<ul class="space-y-2">` + featuresListArray.map(item => `<li class="flex items-start gap-2.5"><i class="fas fa-check text-[#005bac] mt-1 text-[10px]"></i><span class="text-sm text-slate-600">${item}</span></li>`).join('') + `</ul>`;
+                        const featuresHtml = `<ul class="space-y-3">` + featuresListArray.map(item => `<li class="flex items-start gap-3"><i class="fas fa-check-circle text-purple-500 mt-1"></i><span class="text-base text-slate-700 font-medium leading-relaxed">${item}</span></li>`).join('') + `</ul>`;
+                        featuresTextToCopy = featuresListArray.map(item => `- ${item}`).join('\n');
+                        
                         specHtmlBlock = `
-                            <div class="border border-slate-200 rounded-lg overflow-hidden">
-                                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center cursor-pointer select-none" onclick="const content = this.nextElementSibling; if(content) content.classList.toggle('hidden'); const icon = this.querySelector('.toggle-icon'); if(icon) icon.classList.toggle('rotate-180');">
-                                    <div class="flex items-center gap-2"><i class="fas fa-list-ul text-slate-400"></i><span class="text-sm font-bold text-slate-700 uppercase">SPEC</span></div>
-                                    <i class="fas fa-chevron-down text-slate-400 transition-transform toggle-icon"></i>
+                            <div class="relative group border-t border-slate-100 pt-10">
+                                <div class="flex justify-between items-end mb-3">
+                                    <span class="text-[11px] font-black text-purple-600 uppercase tracking-widest bg-purple-50 px-4 py-2 rounded-xl border border-purple-100 shadow-sm">${isZh ? 'FEATURES (重點特徵)' : 'FEATURES'}</span>
                                 </div>
-                                <div class="hidden p-4 bg-white border-t border-slate-200"><div>${featuresHtml}</div></div>
+                                <div class="p-6 bg-slate-50 border border-slate-200 rounded-xl relative shadow-inner group-hover:border-purple-300 transition-colors">
+                                    ${featuresHtml}
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(featuresTextToCopy)}" class="absolute top-4 right-4 text-slate-400 hover:text-purple-600 opacity-0 group-hover:opacity-100 transition-all bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
+                                </div>
                             </div>
                         `;
                     }
@@ -617,51 +714,56 @@
                     lastResultsData.push({ "Model": detox(model), "URL": url, "Title": titleClean, "Desc": descClean, "FAQ": faqClean });
                     
                     card.innerHTML = `
-                        <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded bg-[#005bac]/10 text-[#005bac] flex items-center justify-center"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-bold text-slate-800 text-sm">${detox(model)}</h4><p class="text-xs text-slate-500 truncate max-w-md">${url}</p></div>
+                        <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model)}</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
-                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-4 py-2 rounded font-semibold transition-colors hover:bg-slate-50"><i class="far fa-copy"></i> ${t.copyAll}</button>
+                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button>
                         </div>
-                        <div class="p-6 md:p-8 space-y-8">
+                        <div class="p-8 md:p-10 space-y-10">
+                            
                             <div class="relative group">
-                                <div class="flex justify-between items-end mb-2">
-                                    <span class="text-xs font-bold text-slate-500 uppercase">Meta Title (USP 強化)</span>
-                                    <span class="text-xs font-semibold ${titleByteLen > 60 ? 'text-red-600' : 'text-emerald-600'}">${titleByteLen} / 60 Bytes</span>
+                                <div class="flex justify-between items-end mb-3">
+                                    <span class="text-[11px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">${isZh ? 'Meta Title (USP 強化)' : 'Meta Title (USP)'}</span>
+                                    <span class="text-[11px] font-black ${titleByteLen > 60 ? 'text-red-500 bg-red-50 border-red-200' : 'text-slate-500 bg-slate-100 border-slate-200'} px-3 py-1.5 rounded-lg border">${titleByteLen} / 60 Bytes</span>
                                 </div>
-                                <div class="p-4 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac]">
-                                    <p class="text-lg md:text-xl font-bold text-slate-800">${titleClean}</p>
-                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100"><i class="far fa-copy"></i></button>
+                                <div class="p-6 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-xl relative shadow-sm group-hover:border-blue-400 transition-colors">
+                                    <p class="text-xl font-black text-slate-800">${titleClean}</p>
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(titleClean)}" class="absolute top-4 right-4 text-slate-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-all bg-slate-50 p-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
                                 </div>
                             </div>
-                            <div class="relative group">
-                                <div class="flex justify-between items-end mb-2">
-                                    <span class="text-xs font-bold text-slate-500 uppercase">Meta Description (CTA 注入)</span>
-                                    <span class="text-xs font-semibold ${descByteLen > 160 ? 'text-red-600' : 'text-emerald-600'}">${descByteLen} / 160 Bytes</span>
+                            
+                            <div class="relative group mt-8">
+                                <div class="flex justify-between items-end mb-3">
+                                    <span class="text-[11px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 shadow-sm">${isZh ? 'Meta Description (CTA 注入)' : 'Meta Description (CTA)'}</span>
+                                    <span class="text-[11px] font-black ${descByteLen > 150 ? 'text-red-500 bg-red-50 border-red-200' : 'text-slate-500 bg-slate-100 border-slate-200'} px-3 py-1.5 rounded-lg border">${descByteLen} / 150 Bytes</span>
                                 </div>
-                                <div class="p-4 bg-white border ${descByteLen > 160 ? 'border-red-300' : 'border-slate-200'} rounded-lg shadow-sm group-hover:border-[#005bac]">
-                                    <p class="text-sm md:text-base text-slate-600 leading-relaxed">${descClean}</p>
-                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-3 right-3 text-slate-400 opacity-0 group-hover:opacity-100"><i class="far fa-copy"></i></button>
+                                <div class="p-6 bg-white border ${descByteLen > 150 ? 'border-red-300' : 'border-slate-200'} rounded-xl relative shadow-sm group-hover:border-emerald-400 transition-colors">
+                                    <p class="text-base text-slate-700 leading-relaxed font-medium">${descClean}</p>
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(descClean)}" class="absolute top-4 right-4 text-slate-400 hover:text-emerald-600 opacity-0 group-hover:opacity-100 transition-all bg-slate-50 p-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
                                 </div>
                             </div>
                             
                             ${specHtmlBlock}
                             
-                            <div class="border-t border-slate-50 pt-12 relative group">
-                                <div class="flex justify-between items-center mb-5">
-                                    <span class="text-[11px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 shadow-sm">Expert FAQ (語義對比推理)</span>
-                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="text-[11px] text-blue-400 font-bold underline decoration-2 underline-offset-8 opacity-0 group-hover:opacity-100 transition-opacity">${t.copySingle}</button>
+                            <div class="relative group border-t border-slate-100 pt-10">
+                                <div class="flex justify-between items-end mb-3">
+                                    <span class="text-[11px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm">${isZh ? 'Expert FAQ (語義對比推理)' : 'Expert FAQ (Semantic Contrast)'}</span>
                                 </div>
-                                <div class="text-base sm:text-lg whitespace-pre-wrap leading-relaxed text-slate-700 font-medium bg-slate-50 p-5 rounded-lg border border-slate-200">${faqClean}</div>
+                                <div class="p-6 bg-slate-50 border border-slate-200 rounded-xl relative shadow-inner group-hover:border-indigo-300 transition-colors">
+                                    <p class="text-base whitespace-pre-wrap leading-relaxed text-slate-700 font-medium">${faqClean}</p>
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(faqClean)}" class="absolute top-4 right-4 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
+                                </div>
                             </div>
                         </div>
-                        <div class="bg-slate-50 border-t border-slate-200 px-6 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
+                        
+                        <div class="bg-slate-50 border-t border-slate-200 px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
                             <div class="text-[13px] text-slate-500 font-medium space-y-1">
                                 <p><span class="font-bold text-slate-700">${t.tagLabel}</span> ${detox(tags)}</p>
                                 <p><span class="font-bold text-slate-700">${t.catLabel}</span> ${detox(cat)}</p>
                             </div>
-                            <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(t.tagLabel + ' ' + detox(tags) + '\\n' + t.catLabel + ' ' + detox(cat))}" class="text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-200 shadow-sm"><i class="far fa-copy"></i> ${t.copyMeta}</button>
+                            <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(t.tagLabel + ' ' + detox(tags) + '\\n' + t.catLabel + ' ' + detox(cat))}" class="text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2 bg-white px-4 py-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy"></i> ${t.copyMeta}</button>
                         </div>`;
                 }
                 container.appendChild(card);
@@ -679,7 +781,7 @@
         window.toggleApiModal = () => { const modal = document.getElementById('api-modal'); if(modal) { modal.classList.toggle('hidden'); if(!modal.classList.contains('hidden')) { modal.classList.add('opacity-100'); document.getElementById('api-key-input').value = localApiKey; } } };
         window.saveApiKey = () => { const val = document.getElementById('api-key-input').value.trim(); localApiKey = val; localStorage.setItem('ipc_gemini_apikey', val); const status = document.getElementById('api-save-status'); if(status) status.classList.remove('opacity-0'); setTimeout(() => { if(status) status.classList.add('opacity-0'); window.toggleApiModal(); }, 1200); };
         window.resetKnowledge = async () => { if (!isDataInitialLoaded || !confirm(i18n[currentLang].confirmReset)) return; try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5'), { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() }); document.getElementById('kb-urls').value = ""; document.getElementById('kb-manual').value = ""; updateDashboard("", ""); } catch (e) {} };
-        window.copyToClip = function(btn) { const content = decodeURIComponent(btn.getAttribute('data-content')); const el = document.createElement('textarea'); el.value = content; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const oldText = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => btn.innerHTML = oldText, 2000); };
+        window.copyToClip = function(btn) { const content = decodeURIComponent(btn.getAttribute('data-content')); const el = document.createElement('textarea'); el.value = content; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); const oldText = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check text-[#005bac]"></i>'; setTimeout(() => btn.innerHTML = oldText, 2000); };
         window.exportToExcel = () => {
             if (lastResultsData.length === 0) return;
             const worksheet = XLSX.utils.json_to_sheet(lastResultsData);
@@ -703,7 +805,7 @@
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
-                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.11.28 系統穩定修復版</p></div>
+                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.3 廣告防呆升級版</p></div>
             </div>
             <div class="flex items-center gap-4">
                 <button onclick="window.toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
@@ -739,7 +841,7 @@
         </section>
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div class="flex flex-col sm:flex-row w-full md:w-auto gap-4">
-                <div class="w-full sm:w-56"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label><select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="標準SEO優化">標準SEO優化</option><option value="Gemini">Gemini</option><option value="ChatGPT">ChatGPT</option><option value="Perplexity">Perplexity</option><option value="Google Ads (RSA 廣告素材)">Google Ads (RSA 廣告素材)</option></select></div>
+                <div class="w-full sm:w-56"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label><select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="標準SEO優化">標準SEO優化</option><option value="Gemini">Gemini</option><option value="ChatGPT">ChatGPT</option><option value="Perplexity">Perplexity</option><option value="Google Ads">Google Ads</option></select></div>
                 <div class="w-full sm:w-64"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="titleStrategyLabel">標題生成策略</label><select id="title-strategy" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="smart_auto">智慧動態平衡</option><option value="keyword_first">搜尋意圖優先</option><option value="brand_first">品牌聲量優先</option></select></div>
             </div>
             <button id="submit-btn" onclick="window.executeOptimization()" class="w-full md:w-auto bg-[#005bac] hover:bg-[#004a8d] text-white px-8 py-3.5 rounded-lg font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3"><i class="fas fa-magic"></i><span id="submit-btn-text" data-i18n="btnSubmit">執行 AI 內容生成</span></button>
