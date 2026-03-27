@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.12.5 穩定基準版</title>
+    <title>GEO內容生成器 v1.12.7 原廠詞庫版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -47,7 +47,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.12.5 穩定基準版",
+                navVer: "v1.12.7 原廠詞庫版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -69,8 +69,8 @@
                 geoLabel: "目標優化引擎",
                 titleStrategyLabel: "標題生成策略",
                 strategyAuto: "智慧動態平衡",
-                strategyKeyword: "搜尋意圖優先",
-                strategyBrand: "品牌聲量優先",
+                strategyKeyword: "搜尋意圖優先 (報價/規格)",
+                strategyBrand: "品牌聲量優先 (原廠/現貨)",
                 btnSubmit: "執行 AI 內容生成",
                 processing: "處理中...",
                 resTitle: "優化產出結果",
@@ -92,7 +92,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.12.5 Stable Baseline",
+                navVer: "v1.12.7 Manufacturer Edition",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -114,7 +114,7 @@
                 geoLabel: "Target Engine",
                 titleStrategyLabel: "Title Strategy",
                 strategyAuto: "USP Driven (Balanced)",
-                strategyKeyword: "Sales Intent (Quote/Price)",
+                strategyKeyword: "Search Intent (Quote/Specs)",
                 strategyBrand: "Brand Authority (Official)",
                 btnSubmit: "Execute AI Generation",
                 processing: "Processing...",
@@ -299,6 +299,29 @@
             XLSX.writeFile(workbook, `GEO_Report_${date}.xlsx`);
         };
 
+        window.copyToClip = (btn, type = 'single') => {
+            const content = decodeURIComponent(btn.getAttribute('data-content'));
+            const el = document.createElement('textarea');
+            el.value = content;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            const oldText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check text-blue-600"></i>';
+            setTimeout(() => btn.innerHTML = oldText, 2000);
+        };
+
+        window.resetKnowledge = async () => {
+            if (!isDataInitialLoaded || !confirm(i18n[currentLang].confirmReset)) return;
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5'), { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() });
+                document.getElementById('kb-urls').value = "";
+                document.getElementById('kb-manual').value = "";
+                window.updateDashboard("", "");
+            } catch (e) {}
+        };
+
         async function extractTextFromFile(file) {
             if (file.type === "text/plain") {
                 return new Promise((resolve, reject) => {
@@ -361,7 +384,7 @@
             return items.map((item) => {
                 const bLen = getByteLen(item);
                 const isOver = bLen > maxBytes;
-                return `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 ${isOver ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} border rounded-2xl hover:border-blue-300 transition-all hover:shadow-md"><div class="flex-grow font-bold ${isOver ? 'text-red-700' : 'text-slate-700'} text-sm leading-relaxed">${item}</div><div class="flex items-center gap-4"><span class="text-xs font-black ${isOver ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-100'} px-3 py-1.5 rounded-lg shadow-inner">${bLen} / ${maxBytes}</span><button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(item)}" class="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-slate-50 hover:bg-blue-50 rounded-xl"><i class="far fa-copy text-lg"></i></button></div></div>`;
+                return `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 ${isOver ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} border rounded-xl hover:border-blue-300 transition-all shadow-sm"><div class="flex-grow font-bold ${isOver ? 'text-red-700' : 'text-slate-700'} text-sm leading-relaxed">${item}</div><div class="flex items-center gap-4"><span class="text-xs font-black ${isOver ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-100'} px-3 py-1.5 rounded-lg shadow-inner">${bLen} / ${maxBytes}</span><button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(item)}" class="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-slate-50 hover:bg-blue-50 rounded-lg"><i class="far fa-copy text-lg"></i></button></div></div>`;
             }).join('');
         };
 
@@ -411,7 +434,6 @@
             const targetLangLabel = isZh ? 'Traditional Chinese (繁體中文)' : 'English';
             const brandName = isZh ? '研華' : 'Advantech';
             
-            // 🚨 雙語物理限制脫鉤 (Bilingual Length Decoupling)
             const adHeadLen = isZh ? '13-15 Trad. Chinese characters (26-30 Bytes)' : '25-30 characters';
             const adDescLen = isZh ? '40-45 Trad. Chinese characters (80-90 Bytes)' : '80-90 characters';
             const titleLen = isZh ? 'STRICTLY 50-60 Bytes (approx 25-30 Trad. Chinese characters). DO NOT output short titles under 40 Bytes.' : 'UNDER 60 characters. STRICTLY enforce this maximum.';
@@ -443,7 +465,6 @@
 
             let systemPrompt = "";
 
-            // 🚨 雙語廣告邏輯脫鉤 (Ads Decoupling)
             let adsLongHeadlineRule = isZh 
                 ? `🚨 IDENTITY LOCK: EVERY SINGLE line MUST explicitly start with the Brand and Product/Series name (e.g., "${brandName} [Model/Series]...").\n                   🚨 READABILITY: You MUST use full-width commas (，) to separate clauses.`
                 : `🚨 IDENTITY LOCK: Start with "${brandName}". Keep product names brief.\n                   🚨 READABILITY: Use half-width commas (,). BE EXTREMELY CONCISE to fit under 90 chars.`;
@@ -503,67 +524,64 @@
                 let strategyInstruction = "";
                 let dynamicTitleLimit = titleLen; 
 
-                // 🚨 雙語標題公式脫鉤 (Title Formula Decoupling)
+                // 🚨 v1.12.7 B2B 原廠黃金意圖與權威詞庫 (已移除經銷/供應商/台灣製造)
+                const intentWordsZH = "報價, 價格, 規格, 採購, 專案諮詢, 測試樣機, 技術評估, 現貨, 專案價, 交期, 客製化, 導入, 技術手冊, Datasheet, 效能評估, 架構設計, 解決方案, 應用案例, 實績, 系統整合, 批量採購, 升級替換";
+                const authWordsZH = "原廠直營, 官方授權, 官方現貨, 原廠保固, 解決方案專家, 長期供貨, 官方認證, 原廠技術支援, 全球聯保, 工控領導品牌, 原廠指南, 官方旗艦, 產業首選, 研發製造, 專利技術, 原廠直供, 官方服務, 原廠零件, 官方推薦, 首選品牌";
+                
+                const intentWordsEN = "Pricing, Quote, Specs, Purchase, Project Consulting, Evaluation Unit, Tech Assessment, In Stock, Lead Time, Customization, Deployment, Manual, Datasheet, Architecture, Solution, Case Study, Integration, Bulk Order, Replacement, Benchmark";
+                const authWordsEN = "Official Direct, Authorized, Official Stock, Factory Warranty, Solution Expert, Long-term Supply, Certified, Official Support, Global Warranty, IPC Leader, Official Guide, Flagship, Industry Choice, R&D Manufacturer, Patented, Official Service, Genuine Parts, Top Choice, Official Recommendation, Pioneer";
+
+                const currentIntentWords = isZh ? intentWordsZH : intentWordsEN;
+                const currentAuthWords = isZh ? authWordsZH : authWordsEN;
+
                 if (level === "Product") {
                     dynamicTitleLimit = isZh ? 'UNDER 30 Trad. Chinese characters (Max 60 Bytes)' : 'UNDER 60 characters';
                     if (effectiveStrategy === "keyword_first") {
-                        strategyInstruction = isZh ? 
-                            `🚨 SALES INTENT MODE (BOF / Action-Driven): Formula: [Model] [Dynamic Intent Word]: [Core USP] | ${brandName}` :
-                            `🚨 SALES INTENT MODE: Formula: [Model] [Intent] [Core USP] | ${brandName}`;
+                        strategyInstruction = isZh ? `🚨 SALES INTENT MODE (BOF): Formula: [Model] [Intent Word (Must choose ONE from: ${currentIntentWords})]: [Core USP] | ${brandName}` : `🚨 SALES INTENT MODE: Formula: [Model] [Intent Word (Choose ONE: ${currentIntentWords})] [Core USP] | ${brandName}`;
                     } else if (effectiveStrategy === "brand_first") {
-                        strategyInstruction = isZh ?
-                            `🚨 BRAND AUTHORITY MODE (Defensive/Trust): Formula: ${brandName} [Dynamic Authority Word]：[Model] [Core Category]` :
-                            `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority]: [Model] [Category]`;
+                        strategyInstruction = isZh ? `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority Word (Must choose ONE from: ${currentAuthWords})]：[Model] [Core Category]` : `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority Word (Choose ONE: ${currentAuthWords})]: [Model] [Category]`;
                     } else {
-                        strategyInstruction = isZh ?
-                            `🚨 BALANCED USP MODE (Technical Focus): Formula: [Model] [Strongest Single USP] - [Core Category] | ${brandName}` :
-                            `🚨 BALANCED USP MODE: Formula: [Model] [Core USP] - [Category] | ${brandName}`;
+                        strategyInstruction = isZh ? `🚨 BALANCED USP MODE: Formula: [Model] [Strongest Single USP] - [Core Category] | ${brandName}` : `🚨 BALANCED USP MODE: Formula: [Model] [Core USP] - [Category] | ${brandName}`;
                     }
                 } else {
                     dynamicTitleLimit = isZh ? 'STRICTLY 50-60 Bytes. DO NOT output short titles under 40 Bytes.' : 'UNDER 60 characters. Do not exceed 60!';
                     if (effectiveStrategy === "keyword_first") {
-                        strategyInstruction = isZh ?
-                            `🚨 SALES INTENT MODE (BOF / Action-Driven): Formula: [Series] [Dynamic Intent Word]: [Core USP] - [Secondary Benefit/Scenario] | ${brandName}` :
-                            `🚨 SALES INTENT MODE: Formula: [Series] [Intent] - [Core USP] | ${brandName}`;
+                        strategyInstruction = isZh ? `🚨 SALES INTENT MODE (BOF): Formula: [Series] [Intent Word (Must choose ONE from: ${currentIntentWords})]: [Core USP] - [Secondary Benefit/Scenario] | ${brandName}` : `🚨 SALES INTENT MODE: Formula: [Series] [Intent Word (Choose ONE: ${currentIntentWords})] - [Core USP] | ${brandName}`;
                     } else if (effectiveStrategy === "brand_first") {
-                        strategyInstruction = isZh ?
-                            `🚨 BRAND AUTHORITY MODE (Defensive/Trust): Formula: ${brandName} [Dynamic Authority Word]：[Series/Category] - [Secondary Benefit/Scenario]` :
-                            `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority]: [Series/Category]`;
+                        strategyInstruction = isZh ? `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority Word (Must choose ONE from: ${currentAuthWords})]：[Series/Category] - [Secondary Benefit/Scenario]` : `🚨 BRAND AUTHORITY MODE: Formula: ${brandName} [Authority Word (Choose ONE: ${currentAuthWords})]: [Series/Category]`;
                     } else {
-                        strategyInstruction = isZh ?
-                            `🚨 BALANCED USP MODE (Technical Focus): Formula: [Series] [Strongest Single USP] - [Core Category] - [Secondary Benefit/Scenario] | ${brandName}` :
-                            `🚨 BALANCED USP MODE: Formula: [Series] [Core USP] - [Category] | ${brandName}`;
+                        strategyInstruction = isZh ? `🚨 BALANCED USP MODE: Formula: [Series] [Strongest Single USP] - [Core Category] - [Secondary Benefit/Scenario] | ${brandName}` : `🚨 BALANCED USP MODE: Formula: [Series] [Core USP] - [Category] | ${brandName}`;
                     }
                 }
                 
                 strategyInstruction += `\n🚨 **TITLE ABSOLUTE RULES**: 
                 1. MUST STRICTLY follow the formula structure above. 
-                2. **BRAND DEDUPLICATION (CRITICAL)**: The brand name "${brandName}" MUST appear EXACTLY ONCE in the title. NEVER write "${brandName} ... | ${brandName}". 
-                3. ENSURE ${grammarRule}.`;
+                2. **BRAND DEDUPLICATION (CRITICAL)**: The brand name "${brandName}" MUST appear EXACTLY ONCE in the title. NEVER write "${brandName} ... | ${brandName}".
+                3. **NO FLUFF WORDS (CRITICAL)**: You are STRICTLY FORBIDDEN from using subjective, meaningless adjectives like "強化", "專業級", "工業級", "頂級", "最強". Only use the exact words from the lists provided.
+                4. ENSURE ${grammarRule}.`;
 
                 if (level !== "Product" && isZh) {
-                     strategyInstruction += `\n4. **MAXIMIZE SERP SPACE (CRITICAL)**: You MUST add a "[Secondary Benefit/Scenario]" (e.g., - 賦能工廠自動化轉型) to stretch the title length to the 50-60 Bytes target. DO NOT leave the title too short.`;
+                     strategyInstruction += `\n5. **MAXIMIZE SERP SPACE (CRITICAL)**: You MUST add a "[Secondary Benefit/Scenario]" (e.g., - 賦能工廠自動化轉型) to stretch the title length to the 50-60 Bytes target. DO NOT leave the title too short.`;
                 } else if (!isZh) {
-                     strategyInstruction += `\n4. **CONCISENESS (CRITICAL)**: English has lower information density. Be extremely concise. Drop unnecessary words to strictly stay UNDER 60 characters.`;
+                     strategyInstruction += `\n5. **CONCISENESS (CRITICAL)**: English has lower information density. Be extremely concise. Drop unnecessary words to strictly stay UNDER 60 characters.`;
                 }
 
-                // 🚨 修正：明確區分 Desc 長度限制與 FAQ 無限制，並根據目標引擎動態切換視角
                 let engineInstruction = "";
                 if (geo === "Gemini") {
                     engineInstruction = `**ENGINE TARGET (Gemini - SGE 權威)**: 
-                    - **[DESCRIPTION] 描述起手式 (Desc Hook)**: 強制以「權威定義」開場 (例如："[MODEL] 是一款專為 [產業] 設計的...")。🚨 描述長度絕對死守 150 Bytes 內。
+                    - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！強制以「極簡權威定義」開場 (例："[MODEL]是專為[產業]打造的...")。嚴禁冗長敘述，直奔核心。
                     - **[FAQ] 提問視角 (FAQ Strategy)**: 強制採用「標準合規與架構差異」問法。`;
                 } else if (geo === "ChatGPT") {
                     engineInstruction = `**ENGINE TARGET (ChatGPT - 痛點諮詢)**:
-                    - **[DESCRIPTION] 描述起手式 (Desc Hook)**: 強制以「痛點問句」開場 (例如："面臨極端高溫挑戰？")。🚨 描述長度絕對死守 150 Bytes 內。
+                    - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！強制以「短痛點問句」開場 (例："面臨極端高溫？")。嚴禁冗長敘述，直奔核心。
                     - **[FAQ] 提問視角 (FAQ Strategy)**: 強制採用「使用者情境提問法」。`;
                 } else if (geo === "Perplexity") {
                     engineInstruction = `**ENGINE TARGET (Perplexity - 深層檢索)**:
-                    - **[DESCRIPTION] 描述起手式 (Desc Hook)**: 強制以「高密度數據/認證」開場 (例如："具備 IP67 認證與寬溫的...")。🚨 描述長度絕對死守 150 Bytes 內。
+                    - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！開頭直接塞入「高密度數據/軍規認證」 (例："具備IP67與寬溫...")。嚴禁冗長敘述，直奔核心。
                     - **[FAQ] 提問視角 (FAQ Strategy)**: 強制採用「硬核工程數據比對法」。`;
                 } else {
                     engineInstruction = `**ENGINE TARGET (Standard SEO - 點擊轉換)**:
-                    - **[DESCRIPTION] 描述起手式 (Desc Hook)**: 利益驅動開場，並於結尾強制注入 CTA Power Words: ${ctaWords}。🚨 描述長度絕對死守 150 Bytes 內。
+                    - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！前半段寫 1 個核心優勢，結尾強制接短 CTA (${ctaWords})。嚴禁冗長敘述。
                     - **[FAQ] 提問視角 (FAQ Strategy)**: 標準商業與技術對比問法。`;
                 }
 
@@ -666,7 +684,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.5)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.7)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -736,15 +754,15 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model)}</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.7)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
-                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll}</button>
+                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
                         <div class="p-8 md:p-10 space-y-8">
                             
                             <div class="relative group">
                                 <div class="flex justify-between items-end mb-3">
-                                    <span class="text-[11px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 shadow-sm">${isZh ? 'Meta Title (USP 強化)' : 'Meta Title (USP)'}</span>
+                                    <span class="text-[11px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 shadow-sm">${isZh ? 'Meta Title (意圖與權威鎖定)' : 'Meta Title (Locked Intent)'}</span>
                                     <span class="text-[11px] font-black ${titleByteLen > 60 ? 'text-red-500 bg-red-50 border-red-200' : 'text-slate-500 bg-slate-100 border-slate-200'} px-3 py-1.5 rounded-lg border">${titleByteLen} / 60 Bytes</span>
                                 </div>
                                 <div class="p-6 bg-white border ${titleByteLen > 60 ? 'border-red-300' : 'border-slate-200'} rounded-xl relative shadow-sm group-hover:border-blue-400 transition-colors">
@@ -779,10 +797,10 @@
                         
                         <div class="bg-slate-50 border-t border-slate-200 px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
                             <div class="text-[12px] text-slate-500 font-medium space-y-1">
-                                <p><span class="font-bold text-slate-700">${t.tagLabel}</span> ${detox(tags)}</p>
-                                <p><span class="font-bold text-slate-700">${t.catLabel}</span> ${detox(cat)}</p>
+                                <p><span class="font-bold text-slate-700">${t.tagLabel || 'Tags:'}</span> <span class="text-slate-600">${detox(tags)}</span></p>
+                                <p><span class="font-bold text-slate-700">${t.catLabel || 'Cat:'}</span> <span class="text-slate-600">${detox(cat)}</span></p>
                             </div>
-                            <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(t.tagLabel + ' ' + detox(tags) + '\\n' + t.catLabel + ' ' + detox(cat))}" class="text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2 bg-white px-4 py-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy"></i> ${t.copyMeta}</button>
+                            <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent((t.tagLabel || 'Tags:') + ' ' + detox(tags) + '\n' + (t.catLabel || 'Cat:') + ' ' + detox(cat))}" class="text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-2 bg-white px-4 py-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy"></i> ${t.copyMeta || '複製標籤'}</button>
                         </div>`;
                 }
                 container.appendChild(card);
@@ -808,7 +826,10 @@
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
-                <div><h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1><p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.5 穩定基準版</p></div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.7 原廠詞庫版</p>
+                </div>
             </div>
             <div class="flex items-center gap-4">
                 <button onclick="window.toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
@@ -817,28 +838,72 @@
                 <button onclick="window.toggleLanguage()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
                     <i class="fas fa-globe"></i> 中 / EN
                 </button>
-                <div id="auth-status" class="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-full flex items-center shadow-inner transition-colors duration-500"><i class="fas fa-circle-notch fa-spin mr-2"></i> Connecting...</div>
+                <div id="auth-status" class="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-4 py-2 rounded-full flex items-center shadow-inner transition-colors duration-500">
+                    <i class="fas fa-circle-notch fa-spin mr-2"></i> Connecting...
+                </div>
             </div>
         </div>
     </nav>
+
     <main class="flex-grow max-w-6xl mx-auto w-full p-4 sm:p-8 space-y-8">
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3"><span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-md flex items-center justify-center text-sm">1</span><span data-i18n="sec1Title">目標優化產品</span></h2>
-                <div class="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200"><span class="text-xs font-semibold text-slate-500" data-i18n="pageLevel">頁面層級</span><select id="current-level" class="bg-transparent border-none text-sm font-bold text-[#005bac] outline-none cursor-pointer p-0 pr-4"><option value="Product">產品詳情頁 (PDP)</option><option value="Category">產品線頁面 (PLP)</option><option value="Home">企業首頁 (Home)</option></select></div>
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-md flex items-center justify-center text-sm">1</span>
+                    <span data-i18n="sec1Title">目標優化產品</span>
+                </h2>
+                <div class="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+                    <span class="text-xs font-semibold text-slate-500" data-i18n="pageLevel">頁面層級</span>
+                    <select id="current-level" class="bg-transparent border-none text-sm font-bold text-[#005bac] outline-none cursor-pointer p-0 pr-4">
+                        <option value="Product">產品詳情頁 (PDP)</option>
+                        <option value="Category">產品線頁面 (PLP)</option>
+                        <option value="Home">企業首頁 (Home)</option>
+                    </select>
+                </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Target URLs</label><textarea id="url-input" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none leading-relaxed" data-i18n="urlPlaceholder" placeholder="請輸入產品網址..."></textarea></div>
-                <div class="flex flex-col"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Files</label><div class="flex-grow border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors relative cursor-pointer group"><i class="fas fa-file-upload text-3xl text-slate-400 mb-3 group-hover:text-blue-500"></i><span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">拖放「關聯文件」(如：應用案例、產品手冊、規格書)</span><input type="file" id="file-input" multiple accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"></div><div id="file-status-display" class="hidden mt-3 text-xs font-medium px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-800 rounded-lg flex items-center"></div></div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Target URLs</label>
+                    <textarea id="url-input" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none leading-relaxed" data-i18n="urlPlaceholder" placeholder="請輸入產品網址..."></textarea>
+                </div>
+                <div class="flex flex-col">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Files</label>
+                    <div class="flex-grow border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors relative cursor-pointer group">
+                        <i class="fas fa-file-upload text-3xl text-slate-400 mb-3 group-hover:text-blue-500"></i>
+                        <span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">拖放「關聯文件」(如：應用案例、產品手冊、規格書)</span>
+                        <input type="file" id="file-input" multiple accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                    </div>
+                    <div id="file-status-display" class="hidden mt-3 text-xs font-medium px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-800 rounded-lg flex items-center"></div>
+                </div>
             </div>
         </section>
+
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                <div class="flex items-center gap-3"><h2 class="text-lg font-bold text-slate-800 flex items-center gap-3"><span class="bg-slate-200 text-slate-600 w-7 h-7 rounded-md flex items-center justify-center text-sm">2</span><span data-i18n="sec2Title">企業知識庫 (Knowledge Base)</span></h2><span id="sync-indicator" class="ml-2 text-xs text-slate-400"></span></div>
-                <div class="flex gap-2"><button onclick="window.loadSharedKnowledge()" class="text-xs font-semibold text-slate-600 hover:text-blue-600 bg-white px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2"><i id="reload-icon" class="fas fa-sync-alt"></i> <span data-i18n="btnReload">從雲端刷新</span></button><button onclick="window.resetKnowledge()" class="text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 px-4 py-2 rounded-md border border-red-100 shadow-sm flex items-center gap-2"><i class="fas fa-trash-alt"></i> <span data-i18n="btnReset">清除資料</span></button></div>
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
+                        <span class="bg-slate-200 text-slate-600 w-7 h-7 rounded-md flex items-center justify-center text-sm">2</span>
+                        <span data-i18n="sec2Title">企業知識庫 (Knowledge Base)</span>
+                    </h2>
+                    <span id="sync-indicator" class="ml-2 text-xs text-slate-400"></span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="window.loadSharedKnowledge()" class="text-xs font-semibold text-slate-600 hover:text-blue-600 bg-white px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2">
+                        <i id="reload-icon" class="fas fa-sync-alt"></i> <span data-i18n="btnReload">從雲端刷新</span>
+                    </button>
+                    <button onclick="window.resetKnowledge()" class="text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 px-4 py-2 rounded-md border border-red-100 shadow-sm flex items-center gap-2">
+                        <i class="fas fa-trash-alt"></i> <span data-i18n="btnReset">清除資料</span>
+                    </button>
+                </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><div class="flex justify-between items-end mb-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbUrlLabel">關聯知識網址</label><span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">URLs: <span id="url-count">0</span></span></div><textarea id="kb-urls" data-i18n="kbUrlPlaceholder" onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="輸入相關技術白皮書網址..."></textarea></div>
+                <div>
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbUrlLabel">本次參考網址 (單次沙盒)</label>
+                        <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">URLs: <span id="url-count">0</span></span>
+                    </div>
+                    <textarea id="kb-urls" data-i18n="kbUrlPlaceholder" onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="輸入相關技術白皮書網址..."></textarea>
+                </div>
                 <div>
                     <div class="flex justify-between items-end mb-2">
                         <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -851,17 +916,44 @@
                 </div>
             </div>
         </section>
+
         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div class="flex flex-col sm:flex-row w-full md:w-auto gap-4">
-                <div class="w-full sm:w-56"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label><select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="標準SEO優化">標準SEO優化</option><option value="Gemini">Gemini</option><option value="ChatGPT">ChatGPT</option><option value="Perplexity">Perplexity</option><option value="Google Ads">Google Ads</option></select></div>
-                <div class="w-full sm:w-64"><label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="titleStrategyLabel">標題生成策略</label><select id="title-strategy" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm"><option value="smart_auto">智慧動態平衡</option><option value="keyword_first">搜尋意圖優先</option><option value="brand_first">品牌聲量優先</option></select></div>
+                <div class="w-full sm:w-56">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label>
+                    <select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm">
+                        <option value="標準SEO優化">標準SEO優化</option>
+                        <option value="Gemini">Gemini</option>
+                        <option value="ChatGPT">ChatGPT</option>
+                        <option value="Perplexity">Perplexity</option>
+                        <option value="Google Ads">Google Ads</option>
+                    </select>
+                </div>
+                <div class="w-full sm:w-64">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="titleStrategyLabel">標題生成策略</label>
+                    <select id="title-strategy" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm">
+                        <option value="smart_auto">智慧動態平衡</option>
+                        <option value="keyword_first">搜尋意圖優先 (報價/規格)</option>
+                        <option value="brand_first">品牌聲量優先 (原廠/現貨)</option>
+                    </select>
+                </div>
             </div>
-            <button id="submit-btn" onclick="window.executeOptimization()" class="w-full md:w-auto bg-[#005bac] hover:bg-[#004a8d] text-white px-8 py-3.5 rounded-lg font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3"><i class="fas fa-magic"></i><span id="submit-btn-text" data-i18n="btnSubmit">執行 AI 內容生成</span></button>
+            <button id="submit-btn" onclick="window.executeOptimization()" class="w-full md:w-auto bg-[#005bac] hover:bg-[#004a8d] text-white px-8 py-3.5 rounded-lg font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3">
+                <i class="fas fa-magic"></i><span id="submit-btn-text" data-i18n="btnSubmit">執行 AI 內容生成</span>
+            </button>
         </div>
+
         <section id="result-area" class="hidden mt-12 scroll-mt-24">
             <div class="flex flex-col sm:flex-row justify-between items-end mb-6 gap-4">
-                <div><h3 class="text-2xl font-bold text-slate-800" data-i18n="resTitle">優化產出結果</h3><div class="h-1 w-16 bg-[#005bac] rounded-full mt-3"></div></div>
-                <div id="export-btn-container" class="hidden animate-in fade-in zoom-in duration-300"><button onclick="window.exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2 shadow-sm"><i class="fas fa-file-excel"></i><span id="export-btn-text" data-i18n="btnExport">匯出 Excel 報告</span></button></div>
+                <div>
+                    <h3 class="text-2xl font-bold text-slate-800" data-i18n="resTitle">優化產出結果</h3>
+                    <div class="h-1 w-16 bg-[#005bac] rounded-full mt-3"></div>
+                </div>
+                <div id="export-btn-container" class="hidden animate-in fade-in zoom-in duration-300">
+                    <button onclick="window.exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2 shadow-sm">
+                        <i class="fas fa-file-excel"></i><span id="export-btn-text" data-i18n="btnExport">匯出 Excel 報告</span>
+                    </button>
+                </div>
             </div>
             <div id="output-container" class="space-y-8"></div>
         </section>
@@ -877,10 +969,14 @@
             <p id="api-modal-desc" class="text-xs text-slate-500 mb-6 font-medium leading-relaxed" data-i18n="modalApiDesc">金鑰將加密儲存於本地。</p>
             <div class="space-y-4">
                 <input type="password" id="api-key-input" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-700 focus:border-[#005bac] focus:bg-white outline-none transition-colors">
-                <button onclick="window.saveApiKey()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2"><i class="fas fa-save"></i> <span data-i18n="modalApiSave">儲存並啟用金鑰</span></button>
+                <button onclick="window.saveApiKey()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2">
+                    <i class="fas fa-save"></i> <span data-i18n="modalApiSave">儲存並啟用金鑰</span>
+                </button>
             </div>
             <div class="mt-4 text-center h-4">
-                <span id="api-save-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity flex items-center justify-center gap-1"><i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">金鑰已成功儲存！</span></span>
+                <span id="api-save-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity flex items-center justify-center gap-1">
+                    <i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">金鑰已成功儲存！</span>
+                </span>
             </div>
         </div>
     </div>
