@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.12.10 多模態視覺版</title>
+    <title>GEO內容生成器 v1.12.17 語境對齊版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- 引入 Excel 處理庫 (用於匯出與讀取) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- 引入 PDF 解析庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <!-- 引入 Word (.docx) 解析庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     
     <script type="module">
@@ -52,7 +49,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.12.10 多模態視覺版",
+                navVer: "v1.12.17 語境對齊版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -64,11 +61,12 @@
                 urlPlaceholder: "請輸入「目標產品網址」。AI 將以此鎖定精確型號，並作為 SEO 語境與頁面層級的背景參考。",
                 pdfTitle: "拖放「關聯文件」(支援 PDF, DOCX, XLSX, 圖檔, TXT)",
                 fileSelected: "已載入檔案：",
-                sec2Title: "企業知識庫 (Knowledge Base)",
-                kbUrlLabel: "本次參考網址 (單次沙盒)",
-                kbManualLabel: "品牌規範設定 (全域團隊大腦)",
-                kbUrlPlaceholder: "請填寫「同系列產品線網址」或「技術白皮書」。\n⚠️ 嚴禁填寫企業首頁，避免 AI 抓取過多雜訊導致規格錯亂！",
-                kbManualPlaceholder: "請定義內容產出之絕對禁令與原則，例如：\n1. 禁止虛構：規格未標示者一律寫 N/A，嚴禁瞎編。\n2. 競品規範：禁止提及或攻擊任何競品品牌。\n3. 品牌禁語：不准使用「便宜」，請改用「高性價比」。\n4. 專屬名詞：統一使用「研華專屬無風扇散熱技術™」。",
+                sec2Title: "企業知識庫 (輔助參考區)",
+                kbUrlLabel: "外部參考網址 (單次沙盒)",
+                kbManualLabel: "品牌規範 (全域輔助參考)",
+                // 🚨 修正：精確化為產品解決方案與應用場域
+                kbUrlPlaceholder: "請填寫「同系列產品線網址」或「技術白皮書」。\n⚠️ 若需讓 AI 參考同產品或產品解決方案、應用場域等相關連結，請貼在此處。\n⚠️ 注意：此區塊為背景補充，避免放入過多無關網址導致焦點模糊！",
+                kbManualPlaceholder: "【管理員專用】請貼入品牌內容憲法。\n⚠️ 系統已將此區塊降級為「輔助參考」，確保 AI 重心留在產品本身。\n⚠️ 嚴禁在此貼上網址，避免嚴重稀釋產品推廣焦點！",
                 btnReload: "從雲端刷新",
                 btnReset: "清除資料",
                 geoLabel: "目標優化引擎",
@@ -87,17 +85,21 @@
                 tagLabel: "標籤 (Tags):",
                 catLabel: "分類 (Cat):",
                 copyMeta: "複製標籤",
-                confirmReset: "確定要清除知識庫嗎？",
+                confirmReset: "確定要清除知識庫嗎？清除後雲端資料將同步清空。",
                 btnApiKey: "設定金鑰",
                 modalApiTitle: "API 金鑰安全設定",
                 modalApiDesc: "請輸入您的 Google Gemini API 金鑰。金鑰將僅加密儲存於您的瀏覽器本地端，絕對不會上傳至任何外部伺服器，保障最高資安層級。",
                 modalApiSave: "儲存並啟用金鑰",
                 modalApiSuccess: "金鑰已成功儲存！",
-                modalApiAlert: "請先設定 API 金鑰才能生成內容！"
+                modalApiAlert: "請先設定 API 金鑰才能生成內容！",
+                unlockBtn: "解鎖編輯",
+                unlockPrompt: "請輸入管理員密碼解鎖品牌規範：",
+                unlockSuccess: "已解鎖！游標離開輸入框後將自動儲存。",
+                unlockFail: "密碼錯誤，拒絕解鎖。"
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.12.10 Multimodal Vision",
+                navVer: "v1.12.17 Context Aligned",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -109,11 +111,11 @@
                 urlPlaceholder: "Enter 'Target Product URLs'. AI uses this to lock the exact model and as SEO context.",
                 pdfTitle: "Drop 'Related Docs' (PDF, DOCX, XLSX, Images, TXT)",
                 fileSelected: "File loaded:",
-                sec2Title: "Knowledge Base",
+                sec2Title: "Knowledge Base (Reference Only)",
                 kbUrlLabel: "Reference URLs (Sandbox)",
-                kbManualLabel: "Brand Guidelines (Global Brain)",
-                kbUrlPlaceholder: "Enter 'Same Product Line URLs' or 'Whitepapers'.\n⚠️ DO NOT enter the corporate homepage to prevent AI context dilution and hallucination!",
-                kbManualPlaceholder: "Define strict prohibitions and principles, e.g.:\n1. No Hallucination: Use 'N/A' if spec is missing.\n2. No Competitors: Do not mention or attack competitors.\n3. Banned Words: Avoid 'cheap', use 'cost-effective'.\n4. Terminology: Use 'Advantech Fanless Tech™'.",
+                kbManualLabel: "Brand Guidelines (Reference)",
+                kbUrlPlaceholder: "Enter 'Same Product Line URLs' or 'Whitepapers'.\n⚠️ Paste related links such as same product, product solutions, or application scenarios here.\n⚠️ NOTE: Keep it relevant to avoid context dilution!",
+                kbManualPlaceholder: "[Admin Only] Paste Global Brand Constitution here.\n⚠️ This block is now treated as a 'Reference' to keep AI focused on products.\n⚠️ DO NOT paste URLs here to avoid severe context dilution!",
                 btnReload: "Reload Cloud",
                 btnReset: "Clear Data",
                 geoLabel: "Target Engine",
@@ -132,14 +134,31 @@
                 tagLabel: "Tags:",
                 catLabel: "Category:",
                 copyMeta: "Copy Metadata",
-                confirmReset: "Clear knowledge base?",
+                confirmReset: "Are you sure you want to clear the knowledge base? Cloud data will be wiped.",
                 btnApiKey: "API Key",
                 modalApiTitle: "API Key Settings",
                 modalApiDesc: "Enter your Google Gemini API key. It will be stored securely in your browser's local storage and never uploaded to external servers.",
                 modalApiSave: "Save & Enable Key",
                 modalApiSuccess: "Key saved successfully!",
-                modalApiAlert: "Please set your API Key first!"
+                modalApiAlert: "Please set your API Key first!",
+                unlockBtn: "Unlock Edit",
+                unlockPrompt: "Enter Admin Password to unlock global guidelines:",
+                unlockSuccess: "Unlocked! Auto-sync to cloud is now enabled on blur.",
+                unlockFail: "Incorrect password. Access denied."
             }
+        };
+
+        window.showToast = (msg, type = 'success') => {
+            let toast = document.getElementById('custom-toast');
+            toast.className = `fixed top-5 left-1/2 transform -translate-x-1/2 z-[200] px-6 py-3 rounded-full shadow-xl font-bold text-sm transition-all duration-300 flex items-center gap-2 ${type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`;
+            toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`;
+            
+            void toast.offsetWidth;
+            toast.classList.remove('opacity-0', '-translate-y-full');
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-full');
+            }, 3000);
         };
 
         const renderAuthStatus = () => {
@@ -179,6 +198,10 @@
             geoSelect.options[4].text = "Google Ads";
             document.getElementById('submit-btn-text').innerText = t.btnSubmit;
             if(document.getElementById('export-btn-text')) document.getElementById('export-btn-text').innerText = t.btnExport;
+            
+            document.getElementById('unlock-prompt-text').innerText = t.unlockPrompt;
+            document.getElementById('confirm-reset-text').innerText = t.confirmReset;
+            
             renderAuthStatus();
             updateFileDisplay();
         };
@@ -212,6 +235,75 @@
             const status = document.getElementById('api-save-status');
             if(status) status.classList.remove('opacity-0');
             setTimeout(() => { if(status) status.classList.add('opacity-0'); window.toggleApiModal(); }, 1500);
+        };
+
+        window.openUnlockModal = () => {
+            const modal = document.getElementById('unlock-modal');
+            const content = document.getElementById('unlock-modal-content');
+            document.getElementById('unlock-pwd-input').value = '';
+            document.getElementById('unlock-error-msg').classList.add('hidden');
+            modal.classList.remove('hidden');
+            setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); }, 10);
+            setTimeout(() => { document.getElementById('unlock-pwd-input').focus(); }, 100);
+        };
+
+        window.closeUnlockModal = () => {
+            const modal = document.getElementById('unlock-modal');
+            const content = document.getElementById('unlock-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        };
+
+        window.submitUnlock = () => {
+            const pwd = document.getElementById('unlock-pwd-input').value;
+            if (pwd === "dickybest") {
+                const ta = document.getElementById('kb-manual');
+                ta.removeAttribute('readonly');
+                ta.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed', 'border-slate-200');
+                ta.classList.add('bg-yellow-50', 'text-slate-800', 'border-yellow-300', 'input-focus');
+                
+                const btn = document.getElementById('unlock-btn');
+                btn.innerHTML = `<i class="fas fa-lock-open text-emerald-600"></i> <span data-i18n="unlockBtn">${currentLang === 'zh' ? '已解鎖' : 'Unlocked'}</span>`;
+                btn.classList.remove('bg-slate-100', 'text-slate-500');
+                btn.classList.add('bg-emerald-50', 'border-emerald-200', 'border');
+                btn.onclick = null; 
+                
+                window.closeUnlockModal();
+                window.showToast(i18n[currentLang].unlockSuccess, 'success');
+            } else {
+                document.getElementById('unlock-error-msg').classList.remove('hidden');
+                document.getElementById('unlock-error-text').innerText = i18n[currentLang].unlockFail;
+            }
+        };
+
+        window.openConfirmModal = () => {
+            if (!isDataInitialLoaded) return;
+            const modal = document.getElementById('confirm-modal');
+            const content = document.getElementById('confirm-modal-content');
+            modal.classList.remove('hidden');
+            setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); }, 10);
+        };
+
+        window.closeConfirmModal = () => {
+            const modal = document.getElementById('confirm-modal');
+            const content = document.getElementById('confirm-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        };
+
+        window.executeReset = async () => {
+            window.closeConfirmModal();
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5'), { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() });
+                document.getElementById('kb-urls').value = "";
+                document.getElementById('kb-manual').value = "";
+                window.updateDashboard("", "");
+                window.showToast(currentLang === 'zh' ? '資料已清除同步' : 'Data Cleared', 'success');
+            } catch (e) {
+                window.showToast(currentLang === 'zh' ? '清除失敗' : 'Clear Failed', 'error');
+            }
         };
 
         const updateFileDisplay = () => {
@@ -281,11 +373,14 @@
 
         window.autoBrainSync = async () => {
             if (!isDataInitialLoaded || !isAuthReady) return;
+            const manualEl = document.getElementById('kb-manual');
+            if (manualEl.hasAttribute('readonly')) return;
+
             const syncIdc = document.getElementById('sync-indicator');
             if(syncIdc) syncIdc.innerHTML = '<i class="fas fa-spinner fa-spin text-blue-500"></i>';
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5');
             const inputUrls = document.getElementById('kb-urls').value;
-            const inputManual = document.getElementById('kb-manual').value;
+            const inputManual = manualEl.value;
             try {
                 await setDoc(docRef, { kbUrls: inputUrls, kbManual: inputManual, updatedAt: new Date().toISOString() });
                 window.updateDashboard(inputUrls, inputManual);
@@ -317,17 +412,6 @@
             setTimeout(() => btn.innerHTML = oldText, 2000);
         };
 
-        window.resetKnowledge = async () => {
-            if (!isDataInitialLoaded || !confirm(i18n[currentLang].confirmReset)) return;
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge', 'shared_v5'), { kbUrls: "", kbManual: "", updatedAt: new Date().toISOString() });
-                document.getElementById('kb-urls').value = "";
-                document.getElementById('kb-manual').value = "";
-                window.updateDashboard("", "");
-            } catch (e) {}
-        };
-
-        // 🚨 核心擴充：強大且防呆的檔案解析引擎
         async function extractTextFromFile(file) {
             const ext = file.name.split('.').pop().toLowerCase();
 
@@ -468,7 +552,6 @@
                     <p id="process-sub-msg" class="text-sm text-slate-500 mt-2 font-medium">${t.procSub}</p>
                 </div>`;
 
-            // 🚨 多模態視覺解析擴充 (Multimodal Data Handling)
             let extractedFileText = "";
             let imageParts = []; 
 
@@ -477,7 +560,6 @@
                     for (let i = 0; i < fileInput.files.length; i++) {
                         const file = fileInput.files[i];
                         if (file.type.startsWith('image/')) {
-                            // 處理圖片 (Base64 編碼)
                             const base64Data = await new Promise((resolve, reject) => {
                                 const reader = new FileReader();
                                 reader.onload = (e) => resolve(e.target.result.split(',')[1]); 
@@ -491,7 +573,6 @@
                                 }
                             });
                         } else {
-                            // 處理文件 (文字提取)
                             const fileContent = await extractTextFromFile(file);
                             extractedFileText += `\n\n--- [文檔 ${i+1}: ${file.name}] ---\n${fileContent}`;
                         }
@@ -706,8 +787,7 @@
                 `;
             }
 
-            // 🚨 重構 API Payload：支援純文字 + 多圖片 Base64 直傳
-            let promptText = `Target URL: ${targetUrls}\nPage Level: ${level}\nKnowledge: ${kbUrls}\nRules: ${kbManual}`;
+            let promptText = `Target URL: ${targetUrls}\nPage Level: ${level}\nReference Context (URLs): ${kbUrls}\nBrand Guidelines (Reference): ${kbManual}`;
             if (extractedFileText) {
                 promptText += `\n\n🚨 [SOURCE DOCUMENT] 🚨\n${extractedFileText.substring(0, 30000)}`;
             }
@@ -775,7 +855,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.10)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.17)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -854,7 +934,7 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.10)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.17)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
                             <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
@@ -922,13 +1002,16 @@
     </style>
 </head>
 <body class="min-h-screen flex flex-col overflow-x-hidden">
+    <!-- Custom Toast Notification -->
+    <div id="custom-toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-[200] px-6 py-3 rounded-full shadow-xl font-bold text-sm transition-all duration-300 opacity-0 -translate-y-full pointer-events-none"></div>
+
     <nav class="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
         <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-4">
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
-                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.10 多模態視覺版</p>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.17 語境對齊版</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
@@ -971,7 +1054,6 @@
                     <div class="flex-grow border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors relative cursor-pointer group">
                         <i class="fas fa-file-upload text-3xl text-slate-400 mb-3 group-hover:text-blue-500"></i>
                         <span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">拖放「關聯文件」(支援 PDF, DOCX, XLSX, 圖檔, TXT)</span>
-                        <!-- 🚨 UI 更新：加入 .png, .jpg, .jpeg 支援 -->
                         <input type="file" id="file-input" multiple accept=".pdf,.txt,.docx,.xlsx,.xls,.csv,.png,.jpg,.jpeg" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
                     </div>
                     <div id="file-status-display" class="hidden mt-3 text-xs font-medium px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-800 rounded-lg flex items-center"></div>
@@ -984,7 +1066,7 @@
                 <div class="flex items-center gap-3">
                     <h2 class="text-lg font-bold text-slate-800 flex items-center gap-3">
                         <span class="bg-slate-200 text-slate-600 w-7 h-7 rounded-md flex items-center justify-center text-sm">2</span>
-                        <span data-i18n="sec2Title">企業知識庫 (Knowledge Base)</span>
+                        <span data-i18n="sec2Title">企業知識庫 (輔助參考區)</span>
                     </h2>
                     <span id="sync-indicator" class="ml-2 text-xs text-slate-400"></span>
                 </div>
@@ -992,7 +1074,7 @@
                     <button onclick="window.loadSharedKnowledge()" class="text-xs font-semibold text-slate-600 hover:text-blue-600 bg-white px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2">
                         <i id="reload-icon" class="fas fa-sync-alt"></i> <span data-i18n="btnReload">從雲端刷新</span>
                     </button>
-                    <button onclick="window.resetKnowledge()" class="text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 px-4 py-2 rounded-md border border-red-100 shadow-sm flex items-center gap-2">
+                    <button onclick="window.openConfirmModal()" class="text-xs font-semibold text-red-500 hover:text-red-700 bg-white px-4 py-2 rounded-md border border-red-100 shadow-sm flex items-center gap-2">
                         <i class="fas fa-trash-alt"></i> <span data-i18n="btnReset">清除資料</span>
                     </button>
                 </div>
@@ -1000,20 +1082,22 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <div class="flex justify-between items-end mb-2">
-                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbUrlLabel">本次參考網址 (單次沙盒)</label>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="kbUrlLabel">外部參考網址 (單次沙盒)</label>
                         <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">URLs: <span id="url-count">0</span></span>
                     </div>
-                    <textarea id="kb-urls" data-i18n="kbUrlPlaceholder" onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="輸入相關技術白皮書網址..."></textarea>
+                    <textarea id="kb-urls" data-i18n="kbUrlPlaceholder" onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none leading-relaxed" placeholder="輸入相關技術白皮書網址..."></textarea>
                 </div>
                 <div>
                     <div class="flex justify-between items-end mb-2">
-                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                            <span data-i18n="kbManualLabel">品牌規範設定 (全域團隊大腦)</span>
-                            <span class="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-100">⚠️ 立即覆蓋雲端</span>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2 w-full">
+                            <span data-i18n="kbManualLabel">品牌規範 (全域輔助參考)</span>
+                            <button onclick="window.openUnlockModal()" id="unlock-btn" class="ml-auto text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-500 px-2.5 py-1 rounded transition-colors"><i class="fas fa-lock"></i> <span data-i18n="unlockBtn">解鎖編輯</span></button>
                         </label>
+                    </div>
+                    <textarea id="kb-manual" data-i18n="kbManualPlaceholder" readonly onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-400 cursor-not-allowed custom-scrollbar resize-none transition-colors leading-relaxed" placeholder="例如禁語規範..."></textarea>
+                    <div class="flex justify-end mt-1">
                         <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Chars: <span id="char-count">0</span></span>
                     </div>
-                    <textarea id="kb-manual" data-i18n="kbManualPlaceholder" onblur="window.autoBrainSync()" class="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 input-focus custom-scrollbar resize-none" placeholder="例如禁語規範..."></textarea>
                 </div>
             </div>
         </section>
@@ -1078,6 +1162,39 @@
                 <span id="api-save-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity flex items-center justify-center gap-1">
                     <i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">金鑰已成功儲存！</span>
                 </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自定義密碼解鎖彈窗 -->
+    <div id="unlock-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center transition-opacity opacity-0">
+        <div class="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl transform transition-transform scale-95" id="unlock-modal-content">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-lock text-[#005bac]"></i> <span data-i18n="unlockBtn">管理員解鎖</span></h3>
+                <button onclick="window.closeUnlockModal()" class="text-slate-400 hover:text-slate-600 transition-colors"><i class="fas fa-times"></i></button>
+            </div>
+            <p id="unlock-prompt-text" class="text-xs text-slate-500 mb-6 font-medium leading-relaxed">請輸入管理員密碼解鎖品牌規範：</p>
+            <input type="password" id="unlock-pwd-input" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-[#005bac] focus:bg-white outline-none transition-colors mb-2 font-mono" onkeydown="if(event.key === 'Enter') window.submitUnlock()">
+            <p id="unlock-error-msg" class="text-xs text-red-500 font-bold hidden mb-4"><i class="fas fa-exclamation-circle"></i> <span id="unlock-error-text">密碼錯誤，拒絕解鎖。</span></p>
+            <button onclick="window.submitUnlock()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 mt-2 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2">
+                <i class="fas fa-key"></i> 確認解鎖
+            </button>
+        </div>
+    </div>
+
+    <!-- 自定義清除資料警告彈窗 -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center transition-opacity opacity-0">
+        <div class="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl transform transition-transform scale-95" id="confirm-modal-content">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600"><i class="fas fa-exclamation-triangle"></i></div>
+                <h3 class="text-lg font-bold text-slate-800">警告</h3>
+            </div>
+            <p id="confirm-reset-text" class="text-sm text-slate-600 mb-8 font-medium leading-relaxed">確定要清除知識庫嗎？清除後雲端資料將同步清空。</p>
+            <div class="flex gap-3 justify-end">
+                <button onclick="window.closeConfirmModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition-colors">取消</button>
+                <button onclick="window.executeReset()" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-sm shadow-sm transition-colors flex items-center gap-2">
+                    <i class="fas fa-trash-alt"></i> 確定清除
+                </button>
             </div>
         </div>
     </div>
