@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.12.8 輸出除錯版</title>
+    <title>GEO內容生成器 v1.12.10 多模態視覺版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入 Excel 處理庫 (用於匯出與讀取) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 引入 PDF 解析庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- 引入 Word (.docx) 解析庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -47,7 +52,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.12.8 輸出除錯版",
+                navVer: "v1.12.10 多模態視覺版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -57,7 +62,7 @@
                 levelPLP: "產品線頁面 (PLP)",
                 levelHome: "企業首頁 (Home)",
                 urlPlaceholder: "請輸入「目標產品網址」。AI 將以此鎖定精確型號，並作為 SEO 語境與頁面層級的背景參考。",
-                pdfTitle: "拖放「關聯文件」(如：應用案例、產品手冊、規格書)",
+                pdfTitle: "拖放「關聯文件」(支援 PDF, DOCX, XLSX, 圖檔, TXT)",
                 fileSelected: "已載入檔案：",
                 sec2Title: "企業知識庫 (Knowledge Base)",
                 kbUrlLabel: "本次參考網址 (單次沙盒)",
@@ -92,7 +97,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.12.8 Output Fixed",
+                navVer: "v1.12.10 Multimodal Vision",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -102,7 +107,7 @@
                 levelPLP: "Product Line (PLP)",
                 levelHome: "Corporate Home",
                 urlPlaceholder: "Enter 'Target Product URLs'. AI uses this to lock the exact model and as SEO context.",
-                pdfTitle: "Drop 'Related Docs' (e.g., Case Studies, Manuals, Datasheets)",
+                pdfTitle: "Drop 'Related Docs' (PDF, DOCX, XLSX, Images, TXT)",
                 fileSelected: "File loaded:",
                 sec2Title: "Knowledge Base",
                 kbUrlLabel: "Reference URLs (Sandbox)",
@@ -322,15 +327,18 @@
             } catch (e) {}
         };
 
+        // 🚨 核心擴充：強大且防呆的檔案解析引擎
         async function extractTextFromFile(file) {
-            if (file.type === "text/plain") {
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            if (file.type === "text/plain" || ext === 'txt' || ext === 'csv') {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = (e) => resolve(e.target.result);
-                    reader.onerror = (e) => reject(e);
+                    reader.onerror = (e) => reject(new Error("文字檔讀取失敗"));
                     reader.readAsText(file);
                 });
-            } else if (file.type === "application/pdf") {
+            } else if (file.type === "application/pdf" || ext === 'pdf') {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = async (e) => {
@@ -345,13 +353,48 @@
                                 fullText += pageText + "\n";
                             }
                             resolve(fullText);
-                        } catch (err) { reject(err); }
+                        } catch (err) { reject(new Error("PDF 解析失敗，檔案可能已損壞或受密碼保護")); }
                     };
                     reader.onerror = (e) => reject(e);
                     reader.readAsArrayBuffer(file);
                 });
+            } else if (ext === 'docx') {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const arrayBuffer = e.target.result;
+                            const result = await mammoth.extractRawText({arrayBuffer: arrayBuffer});
+                            resolve(result.value);
+                        } catch (err) { reject(new Error("Word 檔解析失敗")); }
+                    };
+                    reader.onerror = (e) => reject(e);
+                    reader.readAsArrayBuffer(file);
+                });
+            } else if (ext === 'xlsx' || ext === 'xls') {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, {type: 'array'});
+                            let fullText = "";
+                            workbook.SheetNames.forEach(sheetName => {
+                                const sheet = workbook.Sheets[sheetName];
+                                const csv = XLSX.utils.sheet_to_csv(sheet);
+                                fullText += `\n--- Excel 表籤: ${sheetName} ---\n${csv}`;
+                            });
+                            resolve(fullText);
+                        } catch (err) { reject(new Error("Excel 檔解析失敗")); }
+                    };
+                    reader.onerror = (e) => reject(e);
+                    reader.readAsArrayBuffer(file);
+                });
+            } else if (ext === 'ppt' || ext === 'pptx' || ext === 'doc') {
+                 throw new Error(`為確保 AI 讀取品質，系統已攔截 .${ext} 檔案。<br>簡報檔或舊版文件會導致嚴重亂碼與 AI 幻覺，<b>請將此檔案「另存為 PDF」後再上傳！</b>`);
+            } else {
+                 throw new Error(`不支援的檔案格式: .${ext}`);
             }
-            return "";
         }
 
         async function fetchWithRetry(url, options, maxRetries = 5) {
@@ -425,9 +468,45 @@
                     <p id="process-sub-msg" class="text-sm text-slate-500 mt-2 font-medium">${t.procSub}</p>
                 </div>`;
 
+            // 🚨 多模態視覺解析擴充 (Multimodal Data Handling)
             let extractedFileText = "";
+            let imageParts = []; 
+
             if (fileInput.files.length > 0) {
-                try { extractedFileText = await extractTextFromFile(fileInput.files[0]); } catch (e) { extractedFileText = "[File parsing failed]"; }
+                try {
+                    for (let i = 0; i < fileInput.files.length; i++) {
+                        const file = fileInput.files[i];
+                        if (file.type.startsWith('image/')) {
+                            // 處理圖片 (Base64 編碼)
+                            const base64Data = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = (e) => resolve(e.target.result.split(',')[1]); 
+                                reader.onerror = (e) => reject(new Error("圖片讀取失敗"));
+                                reader.readAsDataURL(file);
+                            });
+                            imageParts.push({
+                                inlineData: {
+                                    mimeType: file.type,
+                                    data: base64Data
+                                }
+                            });
+                        } else {
+                            // 處理文件 (文字提取)
+                            const fileContent = await extractTextFromFile(file);
+                            extractedFileText += `\n\n--- [文檔 ${i+1}: ${file.name}] ---\n${fileContent}`;
+                        }
+                    }
+                } catch (e) {
+                    outputContainer.innerHTML = `
+                        <div class="p-8 border-2 border-red-200 bg-red-50 rounded-2xl max-w-2xl mx-auto mt-10 shadow-lg">
+                            <h4 class="font-black text-red-700 mb-4 text-lg flex items-center gap-3"><i class="fas fa-exclamation-triangle text-2xl"></i> 檔案解析攔截或失敗</h4>
+                            <p class="text-sm text-red-600 font-medium leading-relaxed">${e.message}</p>
+                        </div>`;
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                    document.getElementById('submit-btn-text').innerText = t.btnSubmit;
+                    return; 
+                }
             }
 
             const isZh = currentLang === 'zh';
@@ -559,7 +638,6 @@
                 3. **NO FLUFF WORDS (CRITICAL)**: You are STRICTLY FORBIDDEN from using subjective, meaningless adjectives like "強化", "專業級", "工業級", "頂級", "最強". Only use the exact words from the lists provided.
                 4. ENSURE ${grammarRule}.`;
 
-                // 🚨 修正：針對中文強制消除空白符號
                 if (isZh) {
                     strategyInstruction += `\n5. **NO SPACES (CRITICAL)**: DO NOT use empty spaces between Chinese characters or symbols in the title. Connect words tightly. (e.g., output "研華報價：串列設備" instead of "研華 報價 : 串列設備").`;
                 }
@@ -628,11 +706,20 @@
                 `;
             }
 
-            if (extractedFileText) systemPrompt += `\n\n🚨 [SOURCE DOCUMENT] 🚨\n${extractedFileText.substring(0, 30000)}`;
+            // 🚨 重構 API Payload：支援純文字 + 多圖片 Base64 直傳
+            let promptText = `Target URL: ${targetUrls}\nPage Level: ${level}\nKnowledge: ${kbUrls}\nRules: ${kbManual}`;
+            if (extractedFileText) {
+                promptText += `\n\n🚨 [SOURCE DOCUMENT] 🚨\n${extractedFileText.substring(0, 30000)}`;
+            }
+
+            let partsArray = [{ text: promptText }];
+            if (imageParts.length > 0) {
+                partsArray = partsArray.concat(imageParts);
+            }
 
             try {
                 const payload = {
-                    contents: [{ parts: [{ text: `Target URL: ${targetUrls}\nPage Level: ${level}\nKnowledge: ${kbUrls}\nRules: ${kbManual}` }] }],
+                    contents: [{ parts: partsArray }],
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                     tools: [{ "google_search": {} }]
                 };
@@ -688,7 +775,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.8)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.10)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -752,7 +839,6 @@
                         `;
                     }
                     
-                    // 🚨 修正：將 Tags, Category, Features 等欄位補回至匯出矩陣中
                     lastResultsData.push({ 
                         "Product Model": detox(model), 
                         "Target URL": url, 
@@ -768,7 +854,7 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.8)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.10)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
                             <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
@@ -842,7 +928,7 @@
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
-                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.8 輸出除錯版</p>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.10 多模態視覺版</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
@@ -884,8 +970,9 @@
                     <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Source Files</label>
                     <div class="flex-grow border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-blue-400 transition-colors relative cursor-pointer group">
                         <i class="fas fa-file-upload text-3xl text-slate-400 mb-3 group-hover:text-blue-500"></i>
-                        <span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">拖放「關聯文件」(如：應用案例、產品手冊、規格書)</span>
-                        <input type="file" id="file-input" multiple accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                        <span class="text-sm font-semibold text-slate-600" data-i18n="pdfTitle">拖放「關聯文件」(支援 PDF, DOCX, XLSX, 圖檔, TXT)</span>
+                        <!-- 🚨 UI 更新：加入 .png, .jpg, .jpeg 支援 -->
+                        <input type="file" id="file-input" multiple accept=".pdf,.txt,.docx,.xlsx,.xls,.csv,.png,.jpg,.jpeg" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
                     </div>
                     <div id="file-status-display" class="hidden mt-3 text-xs font-medium px-4 py-2.5 bg-blue-50 border border-blue-100 text-blue-800 rounded-lg flex items-center"></div>
                 </div>
