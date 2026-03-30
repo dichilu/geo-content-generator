@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.12.17 語境對齊版</title>
+    <title>GEO內容生成器 v1.13.1 狀態除錯版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -13,7 +13,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
@@ -38,6 +38,7 @@
         
         const apiKey = ""; 
         let localApiKey = localStorage.getItem('ipc_gemini_apikey') || "";
+        let localUserEmail = localStorage.getItem('ipc_user_email') || ""; 
 
         let isAuthReady = false;
         let isDataInitialLoaded = false;
@@ -49,7 +50,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.12.17 語境對齊版",
+                navVer: "v1.13.1 狀態除錯版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -64,7 +65,6 @@
                 sec2Title: "企業知識庫 (輔助參考區)",
                 kbUrlLabel: "外部參考網址 (單次沙盒)",
                 kbManualLabel: "品牌規範 (全域輔助參考)",
-                // 🚨 修正：精確化為產品解決方案與應用場域
                 kbUrlPlaceholder: "請填寫「同系列產品線網址」或「技術白皮書」。\n⚠️ 若需讓 AI 參考同產品或產品解決方案、應用場域等相關連結，請貼在此處。\n⚠️ 注意：此區塊為背景補充，避免放入過多無關網址導致焦點模糊！",
                 kbManualPlaceholder: "【管理員專用】請貼入品牌內容憲法。\n⚠️ 系統已將此區塊降級為「輔助參考」，確保 AI 重心留在產品本身。\n⚠️ 嚴禁在此貼上網址，避免嚴重稀釋產品推廣焦點！",
                 btnReload: "從雲端刷新",
@@ -86,12 +86,12 @@
                 catLabel: "分類 (Cat):",
                 copyMeta: "複製標籤",
                 confirmReset: "確定要清除知識庫嗎？清除後雲端資料將同步清空。",
-                btnApiKey: "設定金鑰",
-                modalApiTitle: "API 金鑰安全設定",
-                modalApiDesc: "請輸入您的 Google Gemini API 金鑰。金鑰將僅加密儲存於您的瀏覽器本地端，絕對不會上傳至任何外部伺服器，保障最高資安層級。",
-                modalApiSave: "儲存並啟用金鑰",
-                modalApiSuccess: "金鑰已成功儲存！",
-                modalApiAlert: "請先設定 API 金鑰才能生成內容！",
+                btnApiKey: "登入 / 設定金鑰", 
+                modalApiTitle: "系統登入與金鑰設定",
+                modalApiDesc: "請輸入您的公司信箱與 API 金鑰。金鑰將加密儲存在您的電腦，信箱僅作為內部使用頻率統計。",
+                modalApiSave: "儲存並登入",
+                modalApiSuccess: "登入成功！金鑰已套用。",
+                modalApiAlert: "請先完成登入與金鑰設定才能生成內容！",
                 unlockBtn: "解鎖編輯",
                 unlockPrompt: "請輸入管理員密碼解鎖品牌規範：",
                 unlockSuccess: "已解鎖！游標離開輸入框後將自動儲存。",
@@ -99,7 +99,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.12.17 Context Aligned",
+                navVer: "v1.13.1 State Fixed",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -135,12 +135,12 @@
                 catLabel: "Category:",
                 copyMeta: "Copy Metadata",
                 confirmReset: "Are you sure you want to clear the knowledge base? Cloud data will be wiped.",
-                btnApiKey: "API Key",
-                modalApiTitle: "API Key Settings",
-                modalApiDesc: "Enter your Google Gemini API key. It will be stored securely in your browser's local storage and never uploaded to external servers.",
-                modalApiSave: "Save & Enable Key",
-                modalApiSuccess: "Key saved successfully!",
-                modalApiAlert: "Please set your API Key first!",
+                btnApiKey: "Login / API Key",
+                modalApiTitle: "System Login & API Key",
+                modalApiDesc: "Enter your corporate email and Google Gemini API key. Keys are stored locally; email is used for usage stats.",
+                modalApiSave: "Save & Login",
+                modalApiSuccess: "Login Successful!",
+                modalApiAlert: "Please login and set your API Key first!",
                 unlockBtn: "Unlock Edit",
                 unlockPrompt: "Enter Admin Password to unlock global guidelines:",
                 unlockSuccess: "Unlocked! Auto-sync to cloud is now enabled on blur.",
@@ -159,6 +159,24 @@
             setTimeout(() => {
                 toast.classList.add('opacity-0', '-translate-y-full');
             }, 3000);
+        };
+
+        // 🚨 核心擴充：動態更新登入狀態按鈕 UI
+        window.updateLoginUI = () => {
+            const btn = document.getElementById('login-btn-display');
+            if (!btn) return;
+            const t = i18n[currentLang];
+            
+            if (localUserEmail && localApiKey) {
+                // 已登入狀態：綠色並顯示信箱前綴
+                const name = localUserEmail.split('@')[0];
+                btn.innerHTML = `<i class="fas fa-user-check text-emerald-500"></i> <span>${name}</span>`;
+                btn.className = "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs px-4 py-2 rounded-md border border-emerald-200 shadow-sm flex items-center gap-2 transition-all active:scale-95";
+            } else {
+                // 未登入狀態：預設灰色
+                btn.innerHTML = `<i class="fas fa-user-circle text-blue-500"></i> <span data-i18n="btnApiKey">${t.btnApiKey}</span>`;
+                btn.className = "bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95";
+            }
         };
 
         const renderAuthStatus = () => {
@@ -203,6 +221,7 @@
             document.getElementById('confirm-reset-text').innerText = t.confirmReset;
             
             renderAuthStatus();
+            window.updateLoginUI();
             updateFileDisplay();
         };
 
@@ -216,6 +235,7 @@
             const content = document.getElementById('api-modal-content');
             if (modal.classList.contains('hidden')) {
                 document.getElementById('api-key-input').value = localApiKey;
+                document.getElementById('user-email-input').value = localUserEmail; 
                 modal.classList.remove('hidden');
                 setTimeout(() => { modal.classList.remove('opacity-0'); if(content) content.classList.remove('scale-95'); }, 10);
             } else {
@@ -228,13 +248,59 @@
             }
         };
 
-        window.saveApiKey = () => {
-            const input = document.getElementById('api-key-input').value.trim();
-            localApiKey = input;
+        window.saveApiKey = async () => {
+            const keyInput = document.getElementById('api-key-input').value.trim();
+            const emailInput = document.getElementById('user-email-input').value.trim();
+            
+            if (!keyInput) {
+                window.showToast(currentLang === 'zh' ? "請輸入 API 金鑰" : "API Key required", "error");
+                return;
+            }
+            if (!emailInput || !emailInput.includes('@')) {
+                window.showToast(currentLang === 'zh' ? "請輸入正確的信箱格式" : "Valid email required", "error");
+                return;
+            }
+
+            localApiKey = keyInput;
+            localUserEmail = emailInput.toLowerCase();
             localStorage.setItem('ipc_gemini_apikey', localApiKey);
+            localStorage.setItem('ipc_user_email', localUserEmail);
+
+            if (isAuthReady) {
+                try {
+                    const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'user_stats', localUserEmail);
+                    const docSnap = await getDoc(userDocRef);
+                    const nowIso = new Date().toISOString();
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        await setDoc(userDocRef, {
+                            ...data,
+                            loginCount: (data.loginCount || 1) + 1,
+                            lastLoginAt: nowIso
+                        }, { merge: true });
+                    } else {
+                        await setDoc(userDocRef, {
+                            email: localUserEmail,
+                            loginCount: 1,
+                            firstLoginAt: nowIso,
+                            lastLoginAt: nowIso
+                        });
+                    }
+                } catch (e) {
+                    console.error("Tracker sync failed:", e);
+                }
+            }
+
+            window.updateLoginUI(); // 🚨 更新 UI 狀態
+
             const status = document.getElementById('api-save-status');
             if(status) status.classList.remove('opacity-0');
-            setTimeout(() => { if(status) status.classList.add('opacity-0'); window.toggleApiModal(); }, 1500);
+            setTimeout(() => { 
+                if(status) status.classList.add('opacity-0'); 
+                window.toggleApiModal(); 
+                window.showToast(i18n[currentLang].modalApiSuccess, "success");
+            }, 1000);
         };
 
         window.openUnlockModal = () => {
@@ -255,6 +321,7 @@
             setTimeout(() => { modal.classList.add('hidden'); }, 300);
         };
 
+        // 🚨 修正：徹底淨化修復的密碼解鎖確認功能
         window.submitUnlock = () => {
             const pwd = document.getElementById('unlock-pwd-input').value;
             if (pwd === "dickybest") {
@@ -269,12 +336,67 @@
                 btn.classList.add('bg-emerald-50', 'border-emerald-200', 'border');
                 btn.onclick = null; 
                 
+                const adminBtn = document.getElementById('admin-panel-btn');
+                if (adminBtn) adminBtn.classList.remove('hidden');
+
                 window.closeUnlockModal();
                 window.showToast(i18n[currentLang].unlockSuccess, 'success');
             } else {
                 document.getElementById('unlock-error-msg').classList.remove('hidden');
                 document.getElementById('unlock-error-text').innerText = i18n[currentLang].unlockFail;
             }
+        };
+
+        window.openAdminDashboard = async () => {
+            const modal = document.getElementById('admin-dashboard-modal');
+            const content = document.getElementById('admin-dashboard-content');
+            const tbody = document.getElementById('admin-table-body');
+            
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-slate-400"><i class="fas fa-circle-notch fa-spin text-xl text-blue-500 mb-2 block"></i>讀取 Firebase 數據中...</td></tr>`;
+            
+            modal.classList.remove('hidden');
+            setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); }, 10);
+
+            try {
+                const querySnapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'user_stats'));
+                const stats = [];
+                querySnapshot.forEach((doc) => stats.push(doc.data()));
+                
+                stats.sort((a, b) => new Date(b.lastLoginAt) - new Date(a.lastLoginAt));
+
+                const now = new Date();
+                let html = '';
+
+                stats.forEach((data) => {
+                    const firstLogin = new Date(data.firstLoginAt || data.lastLoginAt);
+                    const diffTime = Math.abs(now - firstLogin);
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+                    
+                    const lastD = new Date(data.lastLoginAt);
+                    const lastLoginStr = `${lastD.getFullYear()}-${String(lastD.getMonth()+1).padStart(2,'0')}-${String(lastD.getDate()).padStart(2,'0')} ${String(lastD.getHours()).padStart(2,'0')}:${String(lastD.getMinutes()).padStart(2,'0')}`;
+
+                    html += `<tr class="border-b border-slate-100 hover:bg-blue-50/50 transition-colors">
+                        <td class="py-3 px-4 text-sm font-bold text-slate-700"><i class="fas fa-user-circle text-slate-300 mr-2"></i>${data.email}</td>
+                        <td class="py-3 px-4 text-sm text-center font-black text-blue-600">${diffDays} <span class="text-xs text-blue-400 font-normal">天</span></td>
+                        <td class="py-3 px-4 text-sm text-center font-black text-emerald-600">${data.loginCount} <span class="text-xs text-emerald-400 font-normal">次</span></td>
+                        <td class="py-3 px-4 text-xs text-slate-500 text-right font-mono">${lastLoginStr}</td>
+                    </tr>`;
+                });
+                
+                if(stats.length === 0) html = '<tr><td colspan="4" class="text-center py-8 text-slate-400 font-bold">目前無任何登入紀錄</td></tr>';
+                tbody.innerHTML = html;
+                
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-red-500 font-bold"><i class="fas fa-exclamation-triangle block text-2xl mb-2"></i>載入失敗: ${e.message}</td></tr>`;
+            }
+        };
+
+        window.closeAdminDashboard = () => {
+            const modal = document.getElementById('admin-dashboard-modal');
+            const content = document.getElementById('admin-dashboard-content');
+            modal.classList.add('opacity-0');
+            content.classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
         };
 
         window.openConfirmModal = () => {
@@ -855,7 +977,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.12.17)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.13.1)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -934,7 +1056,7 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.12.17)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.13.1)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
                             <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
@@ -1011,12 +1133,13 @@
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
-                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.12.17 語境對齊版</p>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.13.1 狀態除錯版</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
-                <button onclick="window.toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
-                    <i class="fas fa-key text-yellow-500"></i> <span data-i18n="btnApiKey">設定金鑰</span>
+                <!-- 🚨 UI 更新：加入動態渲染 ID -->
+                <button id="login-btn-display" onclick="window.toggleApiModal()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
+                    <i class="fas fa-user-circle text-blue-500"></i> <span data-i18n="btnApiKey">登入 / 設定金鑰</span>
                 </button>
                 <button onclick="window.toggleLanguage()" class="bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
                     <i class="fas fa-globe"></i> 中 / EN
@@ -1091,6 +1214,7 @@
                     <div class="flex justify-between items-end mb-2">
                         <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2 w-full">
                             <span data-i18n="kbManualLabel">品牌規範 (全域輔助參考)</span>
+                            <button id="admin-panel-btn" onclick="window.openAdminDashboard()" class="hidden ml-2 text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2.5 py-1 rounded transition-colors"><i class="fas fa-chart-bar"></i> 追蹤儀表板</button>
                             <button onclick="window.openUnlockModal()" id="unlock-btn" class="ml-auto text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-500 px-2.5 py-1 rounded transition-colors"><i class="fas fa-lock"></i> <span data-i18n="unlockBtn">解鎖編輯</span></button>
                         </label>
                     </div>
@@ -1144,23 +1268,32 @@
         </section>
     </main>
 
-    <!-- API Key Modal -->
+    <!-- 系統登入與 API Key Modal -->
     <div id="api-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center transition-opacity opacity-0">
         <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-300" id="api-modal-content">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-shield-alt text-[#005bac]"></i> <span data-i18n="modalApiTitle">API 金鑰安全設定</span></h3>
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-shield-alt text-[#005bac]"></i> <span data-i18n="modalApiTitle">系統登入與金鑰設定</span></h3>
                 <button onclick="window.toggleApiModal()" class="text-slate-400 hover:text-slate-600 transition-colors p-1"><i class="fas fa-times text-lg"></i></button>
             </div>
-            <p id="api-modal-desc" class="text-xs text-slate-500 mb-6 font-medium leading-relaxed" data-i18n="modalApiDesc">金鑰將加密儲存於本地。</p>
+            <p id="api-modal-desc" class="text-xs text-slate-500 mb-6 font-medium leading-relaxed" data-i18n="modalApiDesc">請輸入您的公司信箱與 API 金鑰。金鑰將加密儲存在您的電腦，信箱僅作為內部使用頻率統計。</p>
+            
             <div class="space-y-4">
-                <input type="password" id="api-key-input" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-700 focus:border-[#005bac] focus:bg-white outline-none transition-colors">
-                <button onclick="window.saveApiKey()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2">
-                    <i class="fas fa-save"></i> <span data-i18n="modalApiSave">儲存並啟用金鑰</span>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Company Email</label>
+                    <input type="email" id="user-email-input" placeholder="name@advantech.com" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-[#005bac] focus:bg-white outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Google Gemini API Key</label>
+                    <input type="password" id="api-key-input" placeholder="AIzaSy..." class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-700 focus:border-[#005bac] focus:bg-white outline-none transition-colors" onkeydown="if(event.key === 'Enter') window.saveApiKey()">
+                </div>
+                
+                <button onclick="window.saveApiKey()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 mt-2 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2">
+                    <i class="fas fa-sign-in-alt"></i> <span data-i18n="modalApiSave">儲存並登入</span>
                 </button>
             </div>
             <div class="mt-4 text-center h-4">
                 <span id="api-save-status" class="text-xs font-bold text-emerald-500 opacity-0 transition-opacity flex items-center justify-center gap-1">
-                    <i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">金鑰已成功儲存！</span>
+                    <i class="fas fa-check-circle"></i> <span data-i18n="modalApiSuccess">登入成功！金鑰已套用。</span>
                 </span>
             </div>
         </div>
@@ -1179,6 +1312,31 @@
             <button onclick="window.submitUnlock()" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3.5 mt-2 rounded-lg shadow-sm transition-all active:scale-95 flex justify-center items-center gap-2">
                 <i class="fas fa-key"></i> 確認解鎖
             </button>
+        </div>
+    </div>
+
+    <!-- Admin 追蹤儀表板彈窗 -->
+    <div id="admin-dashboard-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-[150] flex items-center justify-center transition-opacity opacity-0 p-4 sm:p-8">
+        <div class="bg-white rounded-2xl max-w-4xl w-full mx-auto shadow-2xl transform transition-transform scale-95 flex flex-col max-h-full" id="admin-dashboard-content">
+            <div class="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
+                <h3 class="text-xl font-black text-slate-800 flex items-center gap-3"><i class="fas fa-chart-line text-[#005bac]"></i> 使用者追蹤儀表板</h3>
+                <button onclick="window.closeAdminDashboard()" class="text-slate-400 hover:text-slate-700 bg-white border border-slate-200 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shadow-sm"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-grow bg-white rounded-b-2xl">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 border-y border-slate-200 text-xs font-black text-slate-500 uppercase tracking-widest">
+                            <th class="py-3 px-4 rounded-tl-lg">User Email</th>
+                            <th class="py-3 px-4 text-center">使用天數</th>
+                            <th class="py-3 px-4 text-center">總登入次數</th>
+                            <th class="py-3 px-4 text-right rounded-tr-lg">最後登入時間</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-table-body">
+                        <!-- 資料將由 JS 動態填入 -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
