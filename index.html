@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.14.0 使用者回饋版</title>
+    <title>GEO內容生成器 v1.14.1 Claude 語義擴充版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -13,7 +13,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // 🚨 匯入 addDoc 用於寫入使用者回饋
         import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -51,7 +50,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.14.0 使用者回饋版",
+                navVer: "v1.14.1 Claude 語義擴充版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -97,7 +96,6 @@
                 unlockPrompt: "請輸入管理員密碼解鎖品牌規範：",
                 unlockSuccess: "已解鎖！游標離開輸入框後將自動儲存。",
                 unlockFail: "密碼錯誤，拒絕解鎖。",
-                // 🚨 新增：系統建議相關語系
                 btnFeedback: "系統建議",
                 modalFbTitle: "提供系統優化建議",
                 modalFbDesc: "請描述您遇到的問題或希望新增的功能。為方便後續聯繫，送出時將夾帶您的登入信箱。",
@@ -111,7 +109,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.14.0 User Feedback",
+                navVer: "v1.14.1 Claude Integration",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -157,7 +155,6 @@
                 unlockPrompt: "Enter Admin Password to unlock global guidelines:",
                 unlockSuccess: "Unlocked! Auto-sync to cloud is now enabled on blur.",
                 unlockFail: "Incorrect password. Access denied.",
-                // 🚨 新增：系統建議相關語系 (EN)
                 btnFeedback: "Feedback",
                 modalFbTitle: "Submit System Feedback",
                 modalFbDesc: "Please describe any issues or features you'd like to see. Your login email will be attached for follow-up.",
@@ -228,19 +225,21 @@
             document.getElementById('title-strategy').options[0].text = t.strategyAuto;
             document.getElementById('title-strategy').options[1].text = t.strategyKeyword;
             document.getElementById('title-strategy').options[2].text = t.strategyBrand;
+            
             const geoSelect = document.getElementById('pref-geo');
             geoSelect.options[0].text = currentLang === 'zh' ? "標準 SEO 優化" : "Standard SEO";
             geoSelect.options[1].text = "Gemini";
-            geoSelect.options[2].text = "ChatGPT";
-            geoSelect.options[3].text = "Perplexity";
-            geoSelect.options[4].text = "Google Ads";
+            geoSelect.options[2].text = "Claude"; // 🚨 v1.14.1 加入 Claude
+            geoSelect.options[3].text = "ChatGPT";
+            geoSelect.options[4].text = "Perplexity";
+            geoSelect.options[5].text = "Google Ads";
+            
             document.getElementById('submit-btn-text').innerText = t.btnSubmit;
             if(document.getElementById('export-btn-text')) document.getElementById('export-btn-text').innerText = t.btnExport;
             
             document.getElementById('unlock-prompt-text').innerText = t.unlockPrompt;
             document.getElementById('confirm-reset-text').innerText = t.confirmReset;
             
-            // 更新 Tab 名稱
             const tabUsers = document.getElementById('tab-btn-users');
             const tabFb = document.getElementById('tab-btn-feedback');
             if (tabUsers) tabUsers.innerText = t.adminTabUsers;
@@ -329,7 +328,6 @@
             }, 1000);
         };
 
-        // 🚨 核心擴充：系統建議彈窗與提交邏輯
         window.openFeedbackModal = () => {
             if (!localUserEmail) {
                 window.showToast(i18n[currentLang].modalFbLoginReq, 'error');
@@ -365,7 +363,6 @@
             btn.disabled = true;
 
             try {
-                // 寫入 user_feedback 集合
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'user_feedback'), {
                     email: localUserEmail,
                     feedback: fbText,
@@ -425,7 +422,6 @@
             }
         };
 
-        // 🚨 核心擴充：Admin Dashboard 分頁切換邏輯
         window.switchAdminTab = (tabName) => {
             const tabUsers = document.getElementById('admin-tab-users');
             const tabFb = document.getElementById('admin-tab-feedback');
@@ -445,7 +441,6 @@
             }
         };
 
-        // 🚨 核心擴充：載入 Admin Dashboard 雙軌數據
         window.openAdminDashboard = async () => {
             const modal = document.getElementById('admin-dashboard-modal');
             const content = document.getElementById('admin-dashboard-content');
@@ -455,13 +450,11 @@
             tbodyUsers.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-slate-400"><i class="fas fa-circle-notch fa-spin text-xl text-blue-500 mb-2 block"></i>讀取數據中...</td></tr>`;
             tbodyFb.innerHTML = `<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-circle-notch fa-spin text-xl text-blue-500 mb-2 block"></i>讀取數據中...</td></tr>`;
             
-            // 預設切換回 User Tab
             window.switchAdminTab('users');
             modal.classList.remove('hidden');
             setTimeout(() => { modal.classList.remove('opacity-0'); content.classList.remove('scale-95'); }, 10);
 
             try {
-                // 1. 抓取 Users 統計
                 const qUsers = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'user_stats'));
                 const stats = [];
                 qUsers.forEach((doc) => stats.push(doc.data()));
@@ -487,7 +480,6 @@
                 if(stats.length === 0) htmlUsers = '<tr><td colspan="4" class="text-center py-8 text-slate-400 font-bold">目前無任何紀錄</td></tr>';
                 tbodyUsers.innerHTML = htmlUsers;
 
-                // 2. 抓取 Feedback 建議
                 const qFb = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'user_feedback'));
                 const feedbacks = [];
                 qFb.forEach((doc) => feedbacks.push(doc.data()));
@@ -497,7 +489,6 @@
                 feedbacks.forEach((data) => {
                     const fbD = new Date(data.timestamp);
                     const fbTimeStr = `${fbD.getFullYear()}-${String(fbD.getMonth()+1).padStart(2,'0')}-${String(fbD.getDate()).padStart(2,'0')} ${String(fbD.getHours()).padStart(2,'0')}:${String(fbD.getMinutes()).padStart(2,'0')}`;
-                    // 避免跨站腳本攻擊 (XSS)，將使用者的輸入轉譯
                     const safeFeedback = data.feedback.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
                     htmlFb += `<tr class="border-b border-slate-100 hover:bg-yellow-50/50 transition-colors">
@@ -976,7 +967,12 @@
                 }
 
                 let engineInstruction = "";
-                if (geo === "Gemini") {
+                // 🚨 v1.14.1 加入 Claude 專屬 Prompt
+                if (geo === "Claude") {
+                    engineInstruction = `**ENGINE TARGET (Claude - 深度語義與專業邏輯)**: 
+                    - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！強制以「流暢、自然且具備高度專業性」的語氣開場。嚴禁生硬堆砌關鍵字，專注於傳達核心技術價值。
+                    - **[FAQ] 提問視角 (FAQ Strategy)**: 強制採用「高階決策者與架構師視角」的深度邏輯問法，探討長期的系統穩定性、整合性與 TCO (總體擁有成本) 效益。`;
+                } else if (geo === "Gemini") {
                     engineInstruction = `**ENGINE TARGET (Gemini - SGE 權威)**: 
                     - **[DESCRIPTION] 描述 (極限 150 Bytes / 約 70 中文字)**: 🚨 空間極小！強制以「極簡權威定義」開場 (例："[MODEL]是專為[產業]打造的...")。嚴禁冗長敘述，直奔核心。
                     - **[FAQ] 提問視角 (FAQ Strategy)**: 強制採用「標準合規與架構差異」問法。`;
@@ -1101,7 +1097,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.14.0)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.14.1)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -1180,7 +1176,7 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.14.0)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.14.1)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
                             <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
@@ -1257,11 +1253,11 @@
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
-                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.14.0 使用者回饋版</p>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.14.1 Claude 語義擴充版</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
-                <!-- 🚨 新增：系統建議按鈕 -->
+                <!-- 系統建議按鈕 -->
                 <button onclick="window.openFeedbackModal()" class="bg-white hover:bg-yellow-50 text-slate-600 hover:text-yellow-600 font-semibold text-xs px-4 py-2 rounded-md border border-slate-200 hover:border-yellow-200 shadow-sm flex items-center gap-2 transition-all active:scale-95">
                     <i class="fas fa-lightbulb text-yellow-500"></i> <span data-i18n="btnFeedback">系統建議</span>
                 </button>
@@ -1358,8 +1354,10 @@
                 <div class="w-full sm:w-56">
                     <label class="block text-xs font-semibold text-slate-500 uppercase mb-2" data-i18n="geoLabel">目標優化引擎</label>
                     <select id="pref-geo" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:border-[#005bac] outline-none cursor-pointer shadow-sm">
+                        <!-- 🚨 UI 更新：加入 Claude -->
                         <option value="標準SEO優化">標準SEO優化</option>
                         <option value="Gemini">Gemini</option>
+                        <option value="Claude">Claude</option>
                         <option value="ChatGPT">ChatGPT</option>
                         <option value="Perplexity">Perplexity</option>
                         <option value="Google Ads">Google Ads</option>
@@ -1426,7 +1424,7 @@
         </div>
     </div>
 
-    <!-- 🚨 新增：系統建議表單 Modal -->
+    <!-- 系統建議表單 Modal -->
     <div id="feedback-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm hidden z-[100] flex items-center justify-center transition-opacity opacity-0">
         <div class="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-300" id="feedback-modal-content">
             <div class="flex justify-between items-center mb-5">
@@ -1460,7 +1458,7 @@
         </div>
     </div>
 
-    <!-- 🚨 Admin 追蹤儀表板彈窗 (雙分頁架構) -->
+    <!-- Admin 追蹤儀表板彈窗 (雙分頁架構) -->
     <div id="admin-dashboard-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-[150] flex items-center justify-center transition-opacity opacity-0 p-4 sm:p-8">
         <div class="bg-white rounded-2xl max-w-5xl w-full mx-auto shadow-2xl transform transition-transform scale-95 flex flex-col max-h-full" id="admin-dashboard-content">
             <!-- 標頭與關閉 -->
