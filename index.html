@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEO內容生成器 v1.15.1 TL;DR 放寬版</title>
+    <title>GEO內容生成器 v1.15.2 UI 佈局優化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,7 +15,9 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        }
 
         let firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
@@ -50,7 +52,7 @@
         const i18n = {
             zh: {
                 navTitle: "GEO 內容生成系統",
-                navVer: "v1.15.1 TL;DR 放寬版",
+                navVer: "v1.15.2 UI 佈局優化版",
                 authConnecting: "正在連接雲端...",
                 authSuccess: "雲端已連線",
                 authError: "連線異常",
@@ -109,7 +111,7 @@
             },
             en: {
                 navTitle: "GEO Content System",
-                navVer: "v1.15.1 TL;DR Expansion",
+                navVer: "v1.15.2 UI Optimized",
                 authConnecting: "Connecting...",
                 authSuccess: "Cloud Connected",
                 authError: "Auth Error",
@@ -661,11 +663,14 @@
                 });
             } else if (file.type === "application/pdf" || ext === 'pdf') {
                 return new Promise((resolve, reject) => {
+                    if (!window.pdfjsLib) {
+                        return reject(new Error("PDF 函式庫未載入，無法解析 PDF"));
+                    }
                     const reader = new FileReader();
                     reader.onload = async (e) => {
                         try {
                             const typedarray = new Uint8Array(e.target.result);
-                            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                            const pdf = await window.pdfjsLib.getDocument(typedarray).promise;
                             let fullText = "";
                             for (let i = 1; i <= pdf.numPages; i++) {
                                 const page = await pdf.getPage(i);
@@ -1101,7 +1106,7 @@
                     card.innerHTML = `
                         <div class="bg-gradient-to-r from-emerald-600 to-teal-500 px-8 py-5 flex justify-between items-center shadow-inner">
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.15.1)</span>
+                                <span class="text-[10px] text-white/80 font-black uppercase tracking-widest flex items-center gap-2"><i class="fab fa-google"></i> Google Ads (v1.15.2)</span>
                                 <span class="text-sm font-bold text-white truncate max-w-xl"><i class="fas fa-link mr-3 opacity-50"></i>${url}</span>
                             </div>
                         </div>
@@ -1184,9 +1189,9 @@
                         <div class="bg-slate-50 border-b border-slate-200 px-8 py-5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-10 h-10 rounded-xl bg-[#005bac]/10 text-[#005bac] flex items-center justify-center text-lg"><i class="fas fa-microchip"></i></div>
-                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.15.1)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
+                                <div><h4 class="font-black text-slate-800 text-base">${detox(model) || 'IPC MODEL'} (v1.15.2)</h4><p class="text-xs text-slate-500 truncate max-w-md mt-1">${url}</p></div>
                             </div>
-                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + 'TL;DR:\n' + tldrClean + '\n\n' + featuresTextToCopy + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
+                            <button onclick="window.copyToClip(this, 'all')" data-content="${encodeURIComponent(titleClean + '\n' + descClean + '\n\n' + featuresTextToCopy + '\n\n' + 'TL;DR:\n' + tldrClean + '\n\n' + faqClean)}" class="text-xs bg-white border border-slate-300 px-5 py-2.5 rounded-lg font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow flex items-center gap-2"><i class="far fa-copy"></i> ${t.copyAll || '複製全部'}</button>
                         </div>
                         <div class="p-8 md:p-10 space-y-8">
                             
@@ -1212,21 +1217,21 @@
                                 </div>
                             </div>
 
-                            <!-- 🚨 插入 TL;DR 區塊 (放寬至 200 Bytes) -->
-                            <div class="relative group mt-6">
+                            ${specHtmlBlock}
+                            
+                            <!-- 🚨 插入 TL;DR 區塊 (放寬至 200 Bytes，移至 FAQ 上方) -->
+                            <div class="relative group mt-6 border-t border-slate-100 pt-8">
                                 <div class="flex justify-between items-end mb-3">
                                     <span class="text-[11px] font-black text-amber-600 uppercase tracking-widest bg-amber-50 px-4 py-2 rounded-lg border border-amber-100 shadow-sm">${isZh ? 'TL;DR (AI 摘要抓取點)' : 'TL;DR (AI Summary Hook)'}</span>
                                     <span class="text-[11px] font-black ${tldrByteLen > 200 ? 'text-red-500 bg-red-50 border-red-200' : 'text-slate-500 bg-slate-100 border-slate-200'} px-3 py-1.5 rounded-lg border">${tldrByteLen} / 200 Bytes</span>
                                 </div>
-                                <div class="p-6 bg-white border ${tldrByteLen > 200 ? 'border-red-300' : 'border-slate-200'} rounded-xl relative shadow-sm group-hover:border-amber-400 transition-colors">
-                                    <p class="text-sm text-slate-700 leading-relaxed font-bold italic">${tldrClean}</p>
-                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(tldrClean)}" class="absolute top-4 right-4 text-slate-400 hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-all bg-slate-50 p-2.5 rounded-lg border border-slate-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
+                                <div class="p-6 bg-amber-50/30 border ${tldrByteLen > 200 ? 'border-red-300' : 'border-amber-200'} rounded-xl relative shadow-sm group-hover:border-amber-400 transition-colors">
+                                    <p class="text-sm text-slate-800 leading-relaxed font-bold italic">${tldrClean}</p>
+                                    <button onclick="window.copyToClip(this)" data-content="${encodeURIComponent(tldrClean)}" class="absolute top-4 right-4 text-slate-400 hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-all bg-white p-2.5 rounded-lg border border-amber-200 shadow-sm"><i class="far fa-copy text-base"></i></button>
                                 </div>
                             </div>
                             
-                            ${specHtmlBlock}
-                            
-                            <div class="relative group border-t border-slate-100 pt-8">
+                            <div class="relative group mt-6">
                                 <div class="flex justify-between items-end mb-3">
                                     <span class="text-[11px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-lg border border-indigo-100 shadow-sm">${isZh ? 'Expert FAQ (語義對比推理)' : 'Expert FAQ'}</span>
                                 </div>
@@ -1273,7 +1278,7 @@
                 <div class="w-10 h-10 bg-[#005bac] rounded-lg flex items-center justify-center shadow-md"><i class="fas fa-microchip text-white text-lg"></i></div>
                 <div>
                     <h1 class="text-xl font-bold text-slate-800 leading-tight" data-i18n="navTitle">GEO 內容生成系統</h1>
-                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.15.1 TL;DR 放寬版</p>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide mt-0.5" data-i18n="navVer">v1.15.2 UI 佈局優化版</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
